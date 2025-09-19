@@ -11,23 +11,31 @@ class PrintResolver(examples.Resolver):
         print(visit)
         resolved_visits -= set(v for v in game.visits if v.status is m.VisitStatus.PENDING)
         for v in resolved_visits:
-            print(f"  ( {v} )")
+            print(f"    {v}")
         return result
+
+    def resolve_cycles(self, game: m.Game) -> bool:
+        resolved_visits = set(v for v in game.visits if v.status is m.VisitStatus.PENDING)
+        successfully_resolved = super().resolve_cycles(game)
+        resolved_visits -= set(v for v in game.visits if v.status is m.VisitStatus.PENDING)
+        print("Cycle detected, resolving...")
+        for v in resolved_visits:
+            print(f"    {v}")
+        return successfully_resolved
 
 r = PrintResolver()
 
 vanilla = examples.Vanilla()
 cop = examples.Cop()
-bulletproof = examples.Bulletproof()
+jailkeeper = examples.Jailkeeper()
+roleblocker = examples.Roleblocker()
 town = examples.Town()
 mafia = examples.Mafia()
 
 game = m.Game()
-m.Player('Alice', vanilla, town, game=game)
-m.Player('Bob', vanilla, town, game=game)
-m.Player('Charlie', cop, town, game=game)
-m.Player('David', bulletproof, town, game=game)
-m.Player('Eve', vanilla, mafia, game=game)
+alice = m.Player('Alice', cop, town, game=game)
+bob = m.Player('Bob', jailkeeper, town, game=game)
+eve = m.Player('Eve', roleblocker, mafia, game=game)
 
 for player in game.players:
     print(f'{player}: {examples.full_role_name(player.role, player.alignment)}')
@@ -46,8 +54,21 @@ for player in game.players:
             else:
                 game.visits.append(visit)
 
-game.visits.append(m.Visit(actor=game.players[2], targets=(game.players[4],), ability=game.players[2].actions[0], ability_type=m.AbilityType.ACTION))
-game.visits.append(m.Visit(actor=game.players[4], targets=(game.players[3],), ability=game.players[4].shared_actions[0], ability_type=m.AbilityType.SHARED_ACTION))
+game.visits.append(m.Visit(actor=eve, targets=(alice,),
+                           ability=eve.shared_actions[0],
+                           ability_type=m.AbilityType.SHARED_ACTION))
+game.visits.append(m.Visit(actor=bob, targets=(eve,),
+                           ability=bob.actions[0],
+                           ability_type=m.AbilityType.ACTION))
+game.visits.append(m.Visit(actor=eve, targets=(bob,),
+                           ability=eve.actions[0],
+                           ability_type=m.AbilityType.ACTION))
+game.visits.append(m.Visit(actor=eve, targets=(alice,),
+                           ability=eve.actions[0],
+                           ability_type=m.AbilityType.ACTION))
+game.visits.append(m.Visit(actor=alice, targets=(eve,),
+                           ability=alice.actions[0],
+                           ability_type=m.AbilityType.ACTION))
 
 r.resolve_game(game)
 print()

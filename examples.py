@@ -1,6 +1,11 @@
+"""
+Simple Normal roles, abilities, and alignments.
+"""
+
 from abc import ABC, abstractmethod
 from mafia import AbilityType, Alignment, Chat, Faction, Role, Ability, Game, Player, Visit, VisitStatus
 from collections.abc import Sequence
+from nodes import nodes_in_cycles
 
 def roleblock_player(game: Game, player: Player) -> None:
     """Roleblocks a player."""
@@ -45,8 +50,24 @@ class Resolver:
                 else:
                     successfully_resolved = True
             if failed_to_resolve and not successfully_resolved:
-                # TODO: Check for mutual roleblocks and invoke the Catastrophic Rule.
-                raise RuntimeError("Failed to resolve game.")
+                successfully_resolved = self.resolve_cycles(game)
+                if not successfully_resolved:
+                    raise RuntimeError("Failed to resolve game.")
+
+    def resolve_cycles(self, game: Game) -> bool:
+        successfully_resolved: bool = False
+        
+        # Check for mutual roleblocks and invoke the Catastrophic Rule.
+        roleblocking_visits: list[tuple[Player, Player]] = []
+        for visit in game.visits:
+            if visit.status is VisitStatus.PENDING and 'roleblock' in visit.tags:
+                roleblocking_visits.extend((visit.actor, t) for t in visit.targets)
+        catastrophic_rule_players = nodes_in_cycles(roleblocking_visits)
+        for player in catastrophic_rule_players:
+            roleblock_player(game, player)
+            successfully_resolved = True
+        
+        return successfully_resolved
 
 class Vanilla(Role):
     pass

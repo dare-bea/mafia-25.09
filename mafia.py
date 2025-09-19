@@ -1,4 +1,9 @@
+"""
+Mafia game framework.
+"""
+
 from __future__ import annotations
+
 from collections.abc import Sequence, Iterator
 from enum import Enum, auto
 from dataclasses import InitVar, dataclass, field
