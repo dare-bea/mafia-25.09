@@ -3,7 +3,8 @@ Simple Normal roles, abilities, and alignments.
 """
 
 from abc import ABC, abstractmethod
-from mafia import AbilityType, Alignment, Chat, Faction, Role, Ability, Game, Player, Visit, VisitStatus
+from typing import TypeVar, cast
+from mafia import AbilityModifier, AbilityType, Alignment, Chat, Faction, Role, Ability, Game, Player, Visit, VisitStatus
 from collections.abc import Sequence
 from nodes import nodes_in_cycles
 
@@ -69,9 +70,6 @@ class Resolver:
         
         return successfully_resolved
 
-class Vanilla(Role):
-    pass
-
 class Kill(Ability):
     def __init__(self, id: str | None = None, killer: str | None = None, tags: frozenset[str] | None = None):
         super().__init__(id, tags)
@@ -110,6 +108,11 @@ class InvestigativeAbility(Ability, ABC):
     @abstractmethod
     def get_message(game: Game, target: Player) -> str:
         ...
+
+# ROLES #
+
+class Vanilla(Role):
+    pass
 
 class Bodyguard(Role):
     class Bodyguard(Ability):
@@ -375,7 +378,73 @@ class Watcher(Role):
                 return f"{target.name} was targeted by {', '.join(p.name for p in visits)}."
             else:
                 return f"{target.name} was not targeted by anyone."
+    actions = (Watcher(),)
 
+# ROLE MODIFIERS #
+
+T = TypeVar("T", Role, Alignment)  # same as your original bounds
+
+class XShot(AbilityModifier):
+    class XShotPrototype(Ability):
+        max_uses: int
+    
+    def modify_ability(self, ability: type[Ability], max_uses: int = 1) -> type[Ability]:
+        modifier_tags = self.tags
+
+        def check(method_self: XShot.XShotPrototype, game: Game, actor: Player, targets: Sequence[Player] | None = None) -> bool:
+            return ability.check(method_self, game, actor, targets) and actor.uses[method_self] < method_self.max_uses
+
+        def perform(method_self: XShot.XShotPrototype,
+                    game: Game,
+                    actor: Player,
+                    targets: Sequence[Player] | None = None,
+                    *,
+                    visit: Visit) -> VisitStatus:
+            result = ability.perform(method_self, game, actor, targets, visit=visit)
+            if visit.ability_type is not AbilityType.PASSIVE or result is VisitStatus.SUCCESS:
+                actor.uses[method_self] += 1
+            return result
+
+        XShotAbility = cast(
+            type[Ability],
+            type(
+                f"{self!r}({ability.__name__}, {max_uses})",
+                (ability,),
+                dict(
+                    id = ability.id,
+                    max_uses = max_uses,
+                    tags = ability.tags | modifier_tags,
+                    check = check,
+                    perform = perform,
+                )
+            ),
+        )
+        return XShotAbility
+
+    def modify(self, cls: type[T], max_uses: int = 1) -> type[T]:
+        abilities = self.get_modified_abilities(cls, max_uses)
+        def player_init(role_self: T, game: Game, player: Player) -> None:
+            cls.player_init(role_self, game, player)
+            player.uses = {ability: 0 for ability in role_self.actions + role_self.passives + role_self.shared_actions}
+
+        XShotRoleAlign = cast(
+            type[T],
+            type(
+                f"XShotRoleAlign_{cls.__name__}_{max_uses}",
+                (cls,),
+                dict(
+                    player_init = player_init,
+                    id = f"{max_uses}-Shot {cls.id}",
+                    actions = tuple(abilities["actions"]),
+                    passives = tuple(abilities["passives"]),
+                    shared_actions = tuple(abilities["shared_actions"]),
+                ),
+            ),
+        )
+        return XShotRoleAlign
+
+# ALIGNMENTS #
+    
 class Town(Faction):
     tags = frozenset({'town'})
     pass
