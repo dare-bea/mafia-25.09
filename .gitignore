@@ -1,3 +1,5 @@
+test_results/
+
 .replit
 uv.lock
 pyproject.toml
