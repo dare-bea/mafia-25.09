@@ -38,7 +38,7 @@ def test_catastrophic_rule():
     eve = m.Player('Eve', roleblocker, mafia, game=game)
     
     for player in game.players:
-        print(f'{player}: {examples.full_role_name(player.role, player.alignment)}')
+        print(f'{player}: {player.role_name}')
         print(f'  Actions: {player.actions}')
         print(f'  Passives: {player.passives}')
         print(f'  Shared Actions: {player.shared_actions}')
@@ -75,6 +75,9 @@ def test_catastrophic_rule():
     
     pprint(game)
 
+    assert game.visits[5].status is m.VisitStatus.SUCCESS and all(
+        v.status is m.VisitStatus.SUCCESS for v in game.visits[:5]
+    )
 
 def test_xshot_role():
     r = PrintResolver()
@@ -91,7 +94,7 @@ def test_xshot_role():
     eve = m.Player('Eve', vanilla, mafia, game=game)
 
     for player in game.players:
-        print(f'{player}: {examples.full_role_name(player.role, player.alignment)}')
+        print(f'{player}: {player.role_name}')
         print(f'  Actions: {player.actions}')
         print(f'  Passives: {player.passives}')
         print(f'  Shared Actions: {player.shared_actions}')
@@ -129,6 +132,9 @@ def test_xshot_role():
     print()
 
     pprint(game)
+
+    assert (game.visits[0].status is m.VisitStatus.SUCCESS
+            and game.visits[1].status is m.VisitStatus.FAILURE)
 
 TESTS = [
     test_catastrophic_rule,

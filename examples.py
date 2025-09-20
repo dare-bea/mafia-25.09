@@ -4,7 +4,7 @@ Simple Normal roles, abilities, and alignments.
 
 from abc import ABC, abstractmethod
 from typing import TypeVar, cast
-from mafia import AbilityModifier, AbilityType, Alignment, Chat, Faction, Role, Ability, Game, Player, Visit, VisitStatus
+from mafia import AbilityModifier, AbilityType, Alignment, Chat, Faction, Role, Ability, Game, Player, Visit, VisitStatus, role_name
 from collections.abc import Sequence
 from nodes import nodes_in_cycles
 
@@ -13,9 +13,6 @@ def roleblock_player(game: Game, player: Player) -> None:
     for visit in player.get_visits(game):
         if visit.ability_type is not AbilityType.PASSIVE and 'juggernaut' not in visit.tags:
             visit.status = VisitStatus.FAILURE
-
-def full_role_name(role: Role, alignment: Alignment) -> str:
-    return f"{alignment.id} {role.id}"
 
 class Resolver:
     def resolve_visit(self, game: Game, visit: Visit) -> VisitStatus:
@@ -112,11 +109,12 @@ class InvestigativeAbility(Ability, ABC):
 # ROLES #
 
 class Vanilla(Role):
-    pass
+    """No abilities."""
+    is_adjective: bool = True
 
 class Bodyguard(Role):
+    """Protects a player from one kill, but dies if successful."""
     class Bodyguard(Ability):
-        """Protects a player from one kill, but dies if successful."""
         tags = frozenset({'protect'})
         def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> VisitStatus:
             if targets is None:
@@ -147,6 +145,7 @@ class Bulletproof(Role):
                     return_result = VisitStatus.SUCCESS  # Allow multiple kills to be blocked.
             return return_result
     passives = (Bulletproof(),)
+    is_adjective: bool = True
 
 class Cop(Role):
     """Checks if a player is aligned with the Town."""
@@ -263,6 +262,7 @@ class Macho(Role):
                     return VisitStatus.SUCCESS
             return VisitStatus.FAILURE
     passives = (Macho(),)
+    is_adjective: bool = True
 
 class Mason(Role):
     """Can chat with other Masons."""
@@ -271,7 +271,7 @@ class Mason(Role):
             game.chats[self.id] = Chat(participants={player})
         else:
             game.chats[self.id].participants.add(player)
-        game.chats[self.id].send(self.id, f"{player.name} is a {full_role_name(player.role, player.alignment)}.")
+        game.chats[self.id].send(self.id, f"{player.name} is a {role_name(player.role, player.alignment)}.")
     tags = frozenset({'chat', 'informed'})
 
 class Neapolitan(Role):
@@ -382,9 +382,10 @@ class Watcher(Role):
 
 # ROLE MODIFIERS #
 
-T = TypeVar("T", Role, Alignment)  # same as your original bounds
+T_RoleAlign = TypeVar("T_RoleAlign", Role, Alignment)
 
 class XShot(AbilityModifier):
+    """Can only use their abilities X amount of times."""
     class XShotPrototype(Ability):
         max_uses: int
     
@@ -401,7 +402,7 @@ class XShot(AbilityModifier):
                     *,
                     visit: Visit) -> VisitStatus:
             result = ability.perform(method_self, game, actor, targets, visit=visit)
-            if visit.ability_type is not AbilityType.PASSIVE or result is VisitStatus.SUCCESS:
+            if visit.ability_type is AbilityType.PASSIVE and result is VisitStatus.SUCCESS:
                 actor.uses[method_self] += 1
             return result
 
@@ -421,14 +422,14 @@ class XShot(AbilityModifier):
         )
         return XShotAbility
 
-    def modify(self, cls: type[T], max_uses: int = 1) -> type[T]:
+    def modify(self, cls: type[T_RoleAlign], max_uses: int = 1) -> type[T_RoleAlign]:
         abilities = self.get_modified_abilities(cls, max_uses)
-        def player_init(role_self: T, game: Game, player: Player) -> None:
+        def player_init(role_self: T_RoleAlign, game: Game, player: Player) -> None:
             cls.player_init(role_self, game, player)
             player.uses = {ability: 0 for ability in role_self.actions + role_self.passives + role_self.shared_actions}
 
         XShotRoleAlign = cast(
-            type[T],
+            type[T_RoleAlign],
             type(
                 f"XShotRoleAlign_{cls.__name__}_{max_uses}",
                 (cls,),
@@ -446,10 +447,12 @@ class XShot(AbilityModifier):
 # ALIGNMENTS #
     
 class Town(Faction):
+    """The uninformed majority."""
     tags = frozenset({'town'})
-    pass
+    demonym: str = "{alignment}ie"
 
 class Mafia(Faction):
+    """The informed minority."""
     class Mafia_Factional_Kill(Kill):
         tags = frozenset({'kill', 'factional_kill'})
 
@@ -458,7 +461,18 @@ class Mafia(Faction):
             game.chats[self.id] = Chat(participants={player})
         else:
             game.chats[self.id].participants.add(player)
-        game.chats[self.id].send(self.id, f"{player.name} is a {full_role_name(player.role, player.alignment)}.")
+        game.chats[self.id].send(self.id, f"{player.name} is a {role_name(player.role, player.alignment)}.")
     
     shared_actions = (Mafia_Factional_Kill(),)
     tags = frozenset({'mafia', 'chat', 'informed'})
+    demonym: str = "{alignment._demonym}"
+    role_names: dict[str, str] = {
+        "Vanilla": "{alignment} Goon",
+    }
+
+    @property
+    def _demonym(self) -> str:
+        if self.id.endswith('fia'):
+            return f"{self.id[:1]}oso"
+        else:
+            return f"{self} Goon"

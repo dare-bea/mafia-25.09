@@ -30,6 +30,23 @@ class AbilityType(Enum):
     PASSIVE = auto()
     SHARED_ACTION = auto()
 
+def role_name(role: Role, alignment: Alignment) -> str:
+    """
+    Computes a role name from a role and alignment pair.
+    Set `Role.is_adjective` to `True` to use `Role.id` alongside `Alignment.demonym`.
+    `Alignment.demonym` defaults to `Alignment.id` if not set.
+    Extend `Alignment.role_names` to add a role name override.
+    `Alignment.demonym` and `Alignment.role_names` supports format strings: `Alignment.demonym` supports `{alignment}` and `Alignment.role_names` supports both `{role}` and `{alignment}`.
+    """
+    role_name_override: str | None = alignment.role_names.get(role.id)
+    if role_name_override is not None:
+        return role_name_override.format(role=role, alignment=alignment)
+    if role.is_adjective:
+        if alignment.demonym:
+            return f"{role} {alignment.demonym.format(alignment=alignment)}"
+        return f"{role} {alignment}"
+    return f"{alignment} {role}"
+
 @dataclass(eq=False)
 class Visit:
     def __post_init__(self) -> None:
@@ -104,6 +121,7 @@ class Role:
         passives: tuple[Ability, ...] | None = None,
         shared_actions: tuple[Ability, ...] | None = None,
         tags: frozenset[str] | None = None,
+        is_adjective: bool | None = None
     ):
         if id is not None:
             self.id = id
@@ -115,6 +133,8 @@ class Role:
             self.shared_actions = shared_actions
         if tags is not None:
             self.tags = tags
+        if is_adjective is not None:
+            self.is_adjective = is_adjective
     
     def __init_subclass__(cls) -> None:
         if 'id' not in cls.__dict__:
@@ -138,6 +158,7 @@ class Role:
     passives: tuple[Ability, ...] = ()
     shared_actions: tuple[Ability, ...] = ()
     tags: frozenset[str] = frozenset()
+    is_adjective: bool = False
 
 class Alignment(ABC):
     def __init__(
@@ -147,6 +168,8 @@ class Alignment(ABC):
         passives: tuple[Ability, ...] | None = None,
         shared_actions: tuple[Ability, ...] | None = None,
         tags: frozenset[str] | None = None,
+        demonym: str | None | ellipsis = ...,
+        role_names: dict[str, str] | None = None,
     ):
         if id is not None:
             self.id = id
@@ -158,6 +181,10 @@ class Alignment(ABC):
             self.shared_actions = shared_actions
         if tags is not None:
             self.tags = tags
+        if demonym is not ...:
+            self.demonym = demonym
+        if role_names is not None:
+            self.role_names = role_names
 
     def __str__(self) -> str:
         return self.id
@@ -181,6 +208,8 @@ class Alignment(ABC):
     passives: tuple[Ability, ...] = ()
     shared_actions: tuple[Ability, ...] = ()
     tags: frozenset[str] = frozenset()
+    demonym: str | None = None
+    role_names: dict[str, str] = {}
 
     def check_win(self, game: Game, player: Player) -> WinResult:
         return WinResult.WIN if player.is_alive else WinResult.LOSE
@@ -263,16 +292,19 @@ class AbilityModifier(Modifier, ABC):
     T = TypeVar('T', Role, Alignment)
     def modify(self, cls: type[T]) -> type[T]:
         abilities = self.get_modified_abilities(cls)
+        new_dict = {
+            "id": f"{self.id} {cls.id}",
+            "actions": tuple(abilities["actions"]),
+            "passives": tuple(abilities["passives"]),
+            "shared_actions": tuple(abilities["shared_actions"]),
+            "tags": cls.tags | self.tags,
+        }
+        if issubclass(cls, Alignment) and 'demonym' in cls.__dict__ and cls.demonym:
+            new_dict['demonym'] = f"{self.id} {cls.demonym}"
         return type(
             f"{self!r}({cls.__name__})",
             (cls,),
-            {
-                "id": f"{self.id} {cls.id}",
-                "actions": tuple(abilities["actions"]),
-                "passives": tuple(abilities["passives"]),
-                "shared_actions": tuple(abilities["shared_actions"]),
-                "tags": cls.tags | self.tags,
-            },
+            new_dict,
         )
 
     def modify_role(self, role: type[Role], *args, **kwargs) -> type[Role]:
@@ -323,6 +355,10 @@ class Player:
 
     def __str__(self) -> str:
         return self.name
+    
+    @property
+    def role_name(self) -> str:
+        return role_name(self.role, self.alignment)
     
     name: str
     role: Role
