@@ -40,7 +40,7 @@ class Resolver:
         """Resolve all visits in the game."""
         for visit in game.visits:
             if (visit.ability_type is not AbilityType.PASSIVE
-                and visit.status != VisitStatus.PENDING):
+                and visit.status == VisitStatus.PENDING):
                 visit.actor.uses.setdefault(visit.ability, 0)
                 visit.actor.uses[visit.ability] += 1
         failed_to_resolve: bool = True
@@ -127,7 +127,7 @@ class ProtectiveAbility(Ability):
             return VisitStatus.PENDING
         max_protects: int | None
         if visit.ability_type is AbilityType.PASSIVE and hasattr(visit.ability, 'max_uses'):
-            uses_remaining = cast(XShot.XShotPrototype, visit.ability).max_uses - actor.uses[visit.ability]
+            uses_remaining = cast(XShot.XShotPrototype, visit.ability).max_uses - actor.uses.get(visit.ability, 0)
             max_protects = min(self.limit, uses_remaining) if self.limit is not None else uses_remaining
         else:
             max_protects = self.limit
@@ -401,12 +401,13 @@ class XShot(AbilityModifier):
     
     def modify_ability(self, ability: type[Ability]) -> type[Ability]:
         def check(method_self: XShot.XShotPrototype, game: Game, actor: Player, targets: Sequence[Player] | None = None) -> bool:
-            return ability.check(method_self, game, actor, targets) and actor.uses[method_self] < method_self.max_uses
+            return ability.check(method_self, game, actor, targets) and actor.uses.get(method_self, 0) < method_self.max_uses
         
         return type(
             f"{self!r}({ability.__name__})",
             (ability,),
             dict(
+                id = ability.id,
                 max_uses = self.max_uses,
                 tags = ability.tags | self.tags,
                 check = check,

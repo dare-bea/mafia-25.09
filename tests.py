@@ -190,18 +190,18 @@ def main():
         test_name = test.__name__
         print(f'## TESTING: {test_name}() ##')
         try: 
-            with open(DIR / 'test_results' / f'{test_name}.txt', 'w') as f:
+            with open(DIR / 'test_results' / f'{test_name}.log', 'w') as f:
                 with redirect_stdout(f):
                     test()
         except Exception as e:
-            with open(DIR / 'test_results' / f'{test_name}.txt', 'r') as f:
+            with open(DIR / 'test_results' / f'{test_name}.log', 'r') as f:
                 print(f.read())
-            with open(DIR / 'test_results' / f'{test_name}.txt', 'a') as f:
+            with open(DIR / 'test_results' / f'{test_name}.log', 'a') as f:
                 print_exception(e, file=f)
             print_exception(e)
             print(f'## TEST {test_name} FAILED ##')
         else:
-            with open(DIR / 'test_results' / f'{test_name}.txt', 'r') as f:
+            with open(DIR / 'test_results' / f'{test_name}.log', 'r') as f:
                 print(f.read())
             print(f'## TEST {test_name} PASSED ##')
         print()
