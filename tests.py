@@ -3,7 +3,7 @@ import examples
 from pprint import pprint
 
 class PrintResolver(examples.Resolver):
-    def resolve_visit(self, game: m.Game, visit: m.Visit) -> m.VisitStatus:
+    def resolve_visit(self, game: m.Game, visit: m.Visit) -> int:
         resolved_visits = set(v for v in game.visits if v.status is m.VisitStatus.PENDING) - {visit}
         
         result = super().resolve_visit(game, visit)
@@ -75,22 +75,23 @@ def test_catastrophic_rule():
     
     pprint(game)
 
-    assert game.visits[5].status is m.VisitStatus.SUCCESS and all(
-        v.status is m.VisitStatus.SUCCESS for v in game.visits[:5]
+    assert game.visits[4].status != m.VisitStatus.FAILURE and all(
+        v.status == m.VisitStatus.FAILURE for v in game.visits[:4]
     )
 
 def test_xshot_role():
     r = PrintResolver()
 
     vanilla = examples.Vanilla()
-    xshot = examples.XShot()
-    xshot_cop = xshot(examples.Cop, 1)()
+    xshot = examples.XShot(1)
+    xshot_cop = xshot(examples.Cop)()
+    xshot_bulletproof = xshot(examples.Bulletproof)()
     town = examples.Town()
     mafia = examples.Mafia()
 
     game = m.Game()
     alice = m.Player('Alice', xshot_cop, town, game=game)
-    bob = m.Player('Bob', vanilla, town, game=game)
+    bob = m.Player('Bob', xshot_bulletproof, town, game=game)
     eve = m.Player('Eve', vanilla, mafia, game=game)
 
     for player in game.players:
@@ -117,7 +118,12 @@ def test_xshot_role():
                                    ability_type=m.AbilityType.ACTION))
     else:
         print(f"{alice.name} cannot use {alice.actions[0].id} on {bob.name}.")
+        raise AssertionError("Expected check to succeed.")
+    game.visits.append(m.Visit(actor=eve, targets=(bob,),
+                               ability=eve.shared_actions[0],
+                               ability_type=m.AbilityType.SHARED_ACTION))
     r.resolve_game(game)
+    assert bob.is_alive, "Bob is dead, expected Bulletproof to protect."
     print()
 
     game.phase, game.day_no = m.Phase.NIGHT, 2
@@ -126,26 +132,57 @@ def test_xshot_role():
         game.visits.append(m.Visit(actor=alice, targets=(eve,),
                                    ability=alice.actions[0],
                                    ability_type=m.AbilityType.ACTION))
+        raise AssertionError("Expected check to fail.")
     else:
         print(f"{alice.name} cannot use {alice.actions[0].id} on {eve.name}.")
+    game.visits.append(m.Visit(actor=eve, targets=(bob,),
+                               ability=eve.shared_actions[0],
+                               ability_type=m.AbilityType.SHARED_ACTION))
     r.resolve_game(game)
+    assert not bob.is_alive, "Bob is alive, expected 1-Shot Bulletproof to make Bulletproof fail."
     print()
 
     pprint(game)
 
-    assert (game.visits[0].status is m.VisitStatus.SUCCESS
-            and game.visits[1].status is m.VisitStatus.FAILURE)
+def test_protection():
+    r = PrintResolver()
+
+    town = examples.Town()
+    mafia = examples.Mafia()
+
+    game = m.Game()
+    alice = m.Player('Alice', examples.Doctor(), town, game=game)
+    bob = m.Player('Bob', examples.Vanilla(), town, game=game)
+    eve = m.Player('Eve', examples.Vanilla(), mafia, game=game)
+
+    for player in game.players:
+        print(f'{player}: {player.role_name}')
+        print(f'  Actions: {player.actions}')
+        print(f'  Passives: {player.passives}')
+        print(f'  Shared Actions: {player.shared_actions}')
+        print()
+
+    game.visits.append(m.Visit(alice, (bob,),
+                               ability=alice.actions[0],
+                               ability_type=m.AbilityType.ACTION))
+    game.visits.append(m.Visit(eve, (bob,),
+                               ability=eve.shared_actions[0],
+                               ability_type=m.AbilityType.SHARED_ACTION))
+
+    r.resolve_game(game)
+    assert bob.is_alive, "Bob is dead."
 
 TESTS = [
     test_catastrophic_rule,
     test_xshot_role,
+    test_protection
 ]
 
 def main():
     from os import makedirs
     from contextlib import redirect_stdout, redirect_stderr
     from pathlib import Path
-    from traceback import print_exc
+    from traceback import print_exception
     
     DIR = Path(__file__).parent
     makedirs(DIR / 'test_results', exist_ok=True)
@@ -156,12 +193,12 @@ def main():
             with open(DIR / 'test_results' / f'{test_name}.txt', 'w') as f:
                 with redirect_stdout(f):
                     test()
-        except Exception:
-            with open(DIR / 'test_results' / f'{test_name}.txt', 'a') as f:
-                with redirect_stderr(f):
-                    print_exc()
+        except Exception as e:
             with open(DIR / 'test_results' / f'{test_name}.txt', 'r') as f:
                 print(f.read())
+            with open(DIR / 'test_results' / f'{test_name}.txt', 'a') as f:
+                print_exception(e, file=f)
+            print_exception(e)
             print(f'## TEST {test_name} FAILED ##')
         else:
             with open(DIR / 'test_results' / f'{test_name}.txt', 'r') as f:

@@ -5,16 +5,15 @@ Mafia game framework.
 from __future__ import annotations
 
 from collections.abc import Sequence, Iterator
-from enum import Enum, auto
+from enum import Enum, auto, IntEnum
 from dataclasses import InitVar, dataclass, field
 from abc import ABC, abstractmethod
 from typing import TypeVar, cast
 
-class VisitStatus(Enum):
-    PENDING = auto()
-    SUCCESS = auto()
-    FAILURE = auto()
-    USED = auto()
+class VisitStatus(IntEnum):
+    PENDING = -1
+    FAILURE = 0
+    SUCCESS = 1
 
 class Phase(Enum):
     DAY = auto()
@@ -56,20 +55,20 @@ class Visit:
 
     def __str__(self) -> str:
         targets = ', '.join(t.name for t in self.targets)
-        return f"{self.actor.name}: {self.ability_type.name} {self.ability.id} -> {targets} - {self.status.name}"
+        return f"{self.actor.name}: {self.ability_type.name} {self.ability.id} -> {targets} - {self.status}"
     
     def __repr__(self) -> str:
         targets = ', '.join(t.name for t in self.targets)
         return f"Visit({self.actor.name}, [{targets}], {self.ability!r}, {self.ability_type!r}, {self.status!r}, {self.tags!r})"
     
     actor: Player
-    targets: tuple[Player, ...] = cast(tuple, field(default=None))
+    targets: tuple[Player, ...] = None  # type: ignore[assignment]
     ability: Ability = field(kw_only=True)
     ability_type: AbilityType = field(kw_only=True)
-    status: VisitStatus = VisitStatus.PENDING
+    status: int = VisitStatus.PENDING
     tags: frozenset[str] = field(default_factory=frozenset, kw_only=True)
 
-    def perform(self, game: Game) -> VisitStatus:
+    def perform(self, game: Game) -> int:
         return self.ability.perform(game, self.actor, self.targets, visit=self)
 
 class Ability:
@@ -110,7 +109,7 @@ class Ability:
             and (targets is None or actor not in targets)
         )
 
-    def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> VisitStatus:
+    def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> int:
         raise NotImplementedError
 
 class Role:
@@ -244,6 +243,10 @@ class Modifier:
         if tags is not None:
             self.tags = tags
 
+    def __init_subclass__(cls) -> None:
+        if 'id' not in cls.__dict__:
+            cls.id = cls.__name__.replace('_', ' ')
+
     id: str
     tags: frozenset[str] = frozenset()
 
@@ -276,6 +279,12 @@ class Modifier:
         return f"{self.__class__.__name__}(" + ', '.join(f"{k}={v!r}" for k, v in values.items()) + ")"
 
 class AbilityModifier(Modifier, ABC):
+    def __init_subclass__(cls) -> None:
+        if 'id' not in cls.__dict__:
+            cls.id = cls.__name__.replace('_', ' ')
+
+    id: str
+
     @abstractmethod
     def modify_ability(self, ability: type[Ability]) -> type[Ability]:
         raise NotImplementedError
@@ -290,21 +299,22 @@ class AbilityModifier(Modifier, ABC):
         return abilities
 
     T = TypeVar('T', Role, Alignment)
-    def modify(self, cls: type[T]) -> type[T]:
+    def modify(self, cls: type[T], cls_dict: dict | None = None) -> type[T]:
         abilities = self.get_modified_abilities(cls)
-        new_dict = {
-            "id": f"{self.id} {cls.id}",
-            "actions": tuple(abilities["actions"]),
-            "passives": tuple(abilities["passives"]),
-            "shared_actions": tuple(abilities["shared_actions"]),
-            "tags": cls.tags | self.tags,
-        }
-        if issubclass(cls, Alignment) and 'demonym' in cls.__dict__ and cls.demonym:
-            new_dict['demonym'] = f"{self.id} {cls.demonym}"
+        if cls_dict is None:
+            cls_dict = {
+                "id": f"{self.id} {cls.id}",
+                "actions": tuple(abilities["actions"]),
+                "passives": tuple(abilities["passives"]),
+                "shared_actions": tuple(abilities["shared_actions"]),
+                "tags": cls.tags | self.tags,
+            }
+            if issubclass(cls, Alignment) and 'demonym' in cls.__dict__ and cls.demonym:
+                cls_dict['demonym'] = f"{self.id} {cls.demonym}"
         return type(
             f"{self!r}({cls.__name__})",
             (cls,),
-            new_dict,
+            cls_dict,
         )
 
     def modify_role(self, role: type[Role], *args, **kwargs) -> type[Role]:
