@@ -37,17 +37,19 @@ class AbilityType(Enum):
 def role_name(role: Role, alignment: Alignment) -> str:
     """
     Computes a role name from a role and alignment pair.
-    Set `Role.is_adjective` to `True` to use `Role.id` alongside `Alignment.demonym`.
-    `Alignment.demonym` defaults to `Alignment.id` if not set.
-    Extend `Alignment.role_names` to add a role name override.
-    `Alignment.demonym` and `Alignment.role_names` supports format strings: `Alignment.demonym` supports `{alignment}` and `Alignment.role_names` supports both `{role}` and `{alignment}`.
+
+    - `role.is_adjective` -- Use `{role} {alignment.demonym}` instead of `{alignment} {role}`.
+    - `alignment.demonym` -- defaults to `str(alignment)`.
+    - `alignment.role_names[role.id]` -- a custom role name.
+    
+    `alignment.demonym` and `alignment.role_names[role.id]` both support format strings, passing `role` and `alignment`
     """
     role_name_override: str | None = alignment.role_names.get(role.id)
     if role_name_override is not None:
         return role_name_override.format(role=role, alignment=alignment)
     if role.is_adjective:
         if alignment.demonym:
-            return f"{role} {alignment.demonym.format(alignment=alignment)}"
+            return f"{role} {alignment.demonym.format(role=role, alignment=alignment)}"
         return f"{role} {alignment}"
     return f"{alignment} {role}"
 

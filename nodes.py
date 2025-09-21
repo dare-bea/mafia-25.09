@@ -6,8 +6,7 @@ Node = TypeVar("Node", bound=Hashable)
 
 
 def nodes_in_cycles(edges: Iterable[tuple[Node, Node]]) -> set[Node]:
-    """
-    Given an iterable of directed edges (u, v), return the set of nodes
+    """Given an iterable of directed edges (u, v), return the set of nodes
     that belong to at least one directed cycle.
 
     Nodes can be any hashable type (int, str, ...).

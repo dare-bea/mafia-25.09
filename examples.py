@@ -310,7 +310,13 @@ class Friendly_Neighbor(Role):
 
 
 class Gunsmith(Role):
-    """Checks if a player has a gun in flavor. Mafia (except Traitors, Doctors, and Medical Students), Cops, Vigilantes, Gunsmiths, Role Cops, Vanilla Cops, PT Cops, Vengefuls, Modifier Cops, Detectives, Neapolitans, Goon Cops, Agents, Auditors, Specialists, Backups and JoATs of the aforementioned roles, Inventors that can give out the aforementioned roles, and players with inventions of the aforementioned roles have guns."""
+    """Checks if a player has a gun in flavor.
+    
+    Mafia (except Traitors, Doctors, and Medical Students), Cops, Vigilantes, Gunsmiths,
+    Role Cops, Vanilla Cops, PT Cops, Vengefuls, Modifier Cops, Detectives, Neapolitans,
+    Goon Cops, Agents, Auditors, Specialists, Backups and JoATs of the aforementioned roles,
+    Inventors that can give out the aforementioned roles, and players with inventions of the
+    aforementioned roles have guns."""
 
     class Gunsmith(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
