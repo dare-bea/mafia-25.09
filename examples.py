@@ -3,7 +3,7 @@ Simple Normal roles, abilities, and alignments.
 """
 
 from collections.abc import Sequence, Callable
-from typing import TypeVar, cast
+from typing import TypeVar
 from abc import ABC, abstractmethod
 from mafia import (
     AbilityModifier,
@@ -183,8 +183,8 @@ class Rolestop(Ability):
             targets = tuple(actor for _ in range(self.target_count))
         target, *_ = targets
         max_blocks: int | None
-        if visit.ability_type is AbilityType.PASSIVE and hasattr(visit.ability, "max_uses"):
-            uses_remaining = cast(XShot.XShotPrototype, visit.ability).max_uses - actor.uses.get(
+        if visit.ability_type is AbilityType.PASSIVE and isinstance(visit.ability, XShot.XShotPrototype):
+            uses_remaining = visit.ability.max_uses - actor.uses.get(
                 visit.ability, 0
             )
             max_blocks = (
@@ -192,14 +192,15 @@ class Rolestop(Ability):
             )
         else:
             max_blocks = self.limit
-        successes: int = VisitStatus.FAILURE
+        successes: int = 0
         for v in target.get_visitors(game):
             if (
                 v.status == VisitStatus.PENDING
                 and "unstoppable" not in v.tags
                 and self.block_check(actor, target, v, visit=visit)
             ):
-                successes += self.block_visit(actor, target, v, visit=visit)
+                if self.block_visit(actor, target, v, visit=visit) == VisitStatus.SUCCESS:
+                    successes += 1
                 if max_blocks is not None and max_blocks <= successes:
                     return successes
         return successes
@@ -431,15 +432,15 @@ class Juggernaut(Role):
                 targets = tuple(actor for _ in range(self.target_count))
             target, *_ = targets
             max_upgrades: int | None = None
-            if visit.ability_type is AbilityType.PASSIVE and hasattr(visit.ability, "max_uses"):
-                max_upgrades = cast(XShot.XShotPrototype, visit.ability).max_uses - actor.uses.get(
+            if visit.ability_type is AbilityType.PASSIVE and isinstance(visit.ability, XShot.XShotPrototype):
+                max_upgrades = visit.ability.max_uses - actor.uses.get(
                     visit.ability, 0
                 )
-            successes: int = VisitStatus.FAILURE
+            successes: int = 0
             for visit in target.get_visits(game):
                 if "factional_kill" in visit.tags and visit.status == VisitStatus.PENDING:
                     visit.tags |= frozenset({"unstoppable"})
-                    successes += VisitStatus.SUCCESS
+                    successes += 1
                     if max_upgrades is not None and max_upgrades <= successes:
                         return successes
             return successes
@@ -670,7 +671,7 @@ class XShot(AbilityModifier):
 
         return type(
             f"{self!r}({ability.__name__})",
-            (ability,),
+            (XShot.XShotPrototype, ability),
             dict(
                 id=ability.id,
                 max_uses=self.max_uses,

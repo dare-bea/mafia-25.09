@@ -402,8 +402,8 @@ class Player:
         for ability in self.alignment.shared_actions:
             self.shared_actions.append(ability)
 
-    def __repr__(self) -> str:
-        return f"Player({self.name!r}, {self.role!r}, {self.alignment!r}, private_messages={self.private_messages!r})"
+    # def __repr__(self) -> str:
+    #     return f"Player({self.name!r}, {self.role!r}, {self.alignment!r}, private_messages={self.private_messages!r})"
 
     def __str__(self) -> str:
         return self.name
