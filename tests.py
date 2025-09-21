@@ -209,12 +209,49 @@ def test_xshot_macho():
     assert not bob.is_alive, "Bob is alive."
     assert carol.is_alive, "Carol is dead."
 
-TESTS = [
-    test_catastrophic_rule,
-    test_xshot_role,
-    test_protection,
-    test_xshot_macho,
-]
+def test_tracker_roleblocker():
+    r = PrintResolver()
+
+    town = examples.Town()
+    mafia = examples.Mafia()
+
+    game = m.Game(1, m.Phase.NIGHT)
+    alice = m.Player('Alice', examples.Roleblocker(), town, game=game)
+    bob = m.Player('Bob', examples.Tracker(), town, game=game)
+    eve = m.Player('Eve', examples.Vanilla(), mafia, game=game)
+
+    for player in game.players:
+        print(f'{player}: {player.role_name}')
+        print(f'  Actions: {player.actions}')
+        print(f'  Passives: {player.passives}')
+        print(f'  Shared Actions: {player.shared_actions}')
+        print()
+
+    r.add_passives(game)
+    game.visits.append(m.Visit(alice, (eve,),
+                               ability=alice.actions[0],
+                               ability_type=m.AbilityType.ACTION))
+    game.visits.append(m.Visit(bob, (eve,),
+                               ability=bob.actions[0],
+                               ability_type=m.AbilityType.ACTION))
+    game.visits.append(m.Visit(eve, (bob,),
+                               ability=eve.shared_actions[0],
+                               ability_type=m.AbilityType.SHARED_ACTION))
+    
+    r.resolve_game(game)
+
+    pprint(game)
+
+    print(bob.private_messages)
+    assert bob.private_messages[0].content == "Eve did not target anyone."
+
+TESTS = {
+    "test_catastrophic_rule": test_catastrophic_rule,
+    "test_xshot_role": test_xshot_role,
+    "test_protection": test_protection,
+    "test_xshot_macho": test_xshot_macho,
+    "test_tracker_roleblocker": test_tracker_roleblocker,
+}
 
 def main() -> None:
     from os import makedirs
@@ -225,13 +262,12 @@ def main() -> None:
     successes: int = 0
     DIR = Path(__file__).parent
     makedirs(DIR / 'test_results', exist_ok=True)
-    for test in TESTS:
-        test_name = test.__name__
+    for test_name, test_func in TESTS.items():
         print(f'## TESTING: {test_name}() ##')
         try: 
             with open(DIR / 'test_results' / f'{test_name}.log', 'w') as f:
                 with redirect_stdout(f):
-                    test()
+                    test_func()
         except Exception as e:
             with open(DIR / 'test_results' / f'{test_name}.log', 'r') as f:
                 print(f.read())

@@ -13,6 +13,7 @@ def roleblock_player(game: Game, player: Player) -> None:
     for visit in player.get_visits(game):
         if visit.ability_type is not AbilityType.PASSIVE and 'juggernaut' not in visit.tags:
             visit.status = VisitStatus.FAILURE
+            visit.tags |= {"roleblocked"}
 
 class Resolver:
     def resolve_visit(self, game: Game, visit: Visit) -> int:
@@ -367,7 +368,9 @@ class Tracker(Role):
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
             visits: list[Player] = []
             for visit in target.get_visits(game):
-                if visit.ability_type is not AbilityType.PASSIVE and 'hidden' not in visit.tags:
+                if visit.ability_type is not AbilityType.PASSIVE and all(
+                    tag not in visit.tags for tag in {'hidden', 'roleblocked'}
+                ):
                     visits.extend(visit.targets)
             if visits:
                 return f"{target.name} targeted {', '.join(p.name for p in visits)}."
@@ -399,7 +402,9 @@ class Watcher(Role):
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
             visits: list[Player] = []
             for visit in target.get_visitors(game):
-                if visit.ability_type is not AbilityType.PASSIVE and 'hidden' not in visit.tags:
+                if visit.ability_type is not AbilityType.PASSIVE and all(
+                    tag not in visit.tags for tag in {'hidden', 'roleblocked'}
+                ):
                     visits.append(visit.actor)
             if visits:
                 return f"{target.name} was targeted by {', '.join(p.name for p in visits)}."
