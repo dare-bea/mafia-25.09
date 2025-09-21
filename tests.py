@@ -172,10 +172,10 @@ def test_xshot_role():
         )
     )
     r.resolve_game(game)
-    assert not bob.is_alive, "Bob is alive, expected 1-Shot Bulletproof to be used."
     print()
-
     pprint(game)
+
+    assert not bob.is_alive, "Bob is alive, expected 1-Shot Bulletproof to be used."
 
 
 def test_protection():
@@ -207,6 +207,7 @@ def test_protection():
     )
 
     r.resolve_game(game)
+    print()
     pprint(game)
 
     assert bob.is_alive, "Bob is dead."
@@ -253,6 +254,7 @@ def test_xshot_macho():
     )
 
     r.resolve_game(game)
+    print()
     pprint(game)
 
     assert not bob.is_alive, "Bob is alive."
@@ -291,12 +293,51 @@ def test_tracker_roleblocker():
     )
 
     r.resolve_game(game)
-
+    print()
     pprint(game)
 
     print(bob.private_messages)
     assert bob.private_messages[0].content == "Eve did not target anyone."
 
+
+def test_juggernaut():
+    r = PrintResolver()
+
+    town = examples.Town()
+    mafia = examples.Mafia()
+
+    game = m.Game(1, m.Phase.NIGHT)
+    alice = m.Player("Alice", examples.Roleblocker(), town, game=game)
+    bob = m.Player("Bob", examples.Vanilla(), town, game=game)
+    eve = m.Player("Eve", examples.Juggernaut(), mafia, game=game)
+
+    for player in game.players:
+        print(f"{player}: {player.role_name}")
+        print(f"  Actions: {player.actions}")
+        print(f"  Passives: {player.passives}")
+        print(f"  Shared Actions: {player.shared_actions}")
+        print()
+
+    r.add_passives(game)
+    game.visits.append(
+        m.Visit(alice, (eve,), ability=alice.actions[0], ability_type=m.AbilityType.ACTION)
+    )
+    game.visits.append(
+        m.Visit(eve, (eve,), ability=eve.actions[0], ability_type=m.AbilityType.ACTION)
+    )
+    game.visits.append(
+        m.Visit(
+            eve, (bob,), ability=eve.shared_actions[0], ability_type=m.AbilityType.SHARED_ACTION
+        )
+    )
+
+    r.resolve_game(game)
+    print()
+    pprint(game)
+
+    assert not bob.is_alive, "Factional Kill was roleblocked, expected Juggernaut to force kill."
+
+# DO TESTS #
 
 TESTS = {
     "test_catastrophic_rule": test_catastrophic_rule,
@@ -304,6 +345,7 @@ TESTS = {
     "test_protection": test_protection,
     "test_xshot_macho": test_xshot_macho,
     "test_tracker_roleblocker": test_tracker_roleblocker,
+    "test_juggernaut": test_juggernaut,
 }
 
 

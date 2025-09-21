@@ -22,26 +22,39 @@ from mafia import (
 from nodes import nodes_in_cycles
 
 
-def roleblock_player(game: Game, player: Player) -> None:
+def roleblock_player(game: Game, player: Player) -> VisitStatus:
     """Roleblocks a player."""
+    success = VisitStatus.FAILURE
     for visit in player.get_visits(game):
-        if visit.ability_type is not AbilityType.PASSIVE and "juggernaut" not in visit.tags:
+        if visit.ability_type is not AbilityType.PASSIVE and "unstoppable" not in visit.tags:
             visit.status = VisitStatus.FAILURE
             visit.tags |= {"roleblocked"}
+            success = VisitStatus.SUCCESS
+    return success
 
 
 class Resolver:
     def resolve_visit(self, game: Game, visit: Visit) -> int:
         """Resolve a visit and return the result. If the visit cannot be resolved, return VisitStatus.PENDING."""
         # Check if the ability is immediate. If so, perform the visit.
-        if visit.ability.immediate:
+        if visit.ability.immediate or "unstoppable" in visit.tags:
             status = visit.perform(game)
             visit.status = status
+            if visit.ability_type is AbilityType.PASSIVE and status != VisitStatus.PENDING:
+                visit.actor.uses.setdefault(visit.ability, 0)
+                visit.actor.uses[visit.ability] += status
             return status
         # Check if the actor has a pending roleblock.
         if visit.ability_type is not AbilityType.PASSIVE and any(
-            "roleblock" in v.tags and v.status == VisitStatus.PENDING
+            v.status == VisitStatus.PENDING and "roleblock" in v.tags
             for v in visit.actor.get_visitors(game)
+        ):
+            return VisitStatus.PENDING
+        # Check if a target has a pending rolestop or juggernaut.
+        if visit.ability_type is not AbilityType.PASSIVE and any(
+            v.status == VisitStatus.PENDING and ("rolestop" in v.tags or "juggernaut" in v.tags)
+            for t in visit.targets
+            for v in t.get_visitors(game)
         ):
             return VisitStatus.PENDING
         # Perform the visit.
@@ -61,6 +74,8 @@ class Resolver:
             ):
                 visit.actor.uses.setdefault(visit.ability, 0)
                 visit.actor.uses[visit.ability] += 1
+            if visit.ability.immediate:
+                self.resolve_visit(game, visit)
         failed_to_resolve: bool = True
         while failed_to_resolve:
             failed_to_resolve = False
@@ -128,7 +143,7 @@ class Kill(Ability):
         if targets is None:
             targets = tuple(actor for _ in range(self.target_count))
         target, *_ = targets
-        if "juggernaut" not in visit.tags and any(
+        if "unstoppable" not in visit.tags and any(
             "protect" in v.tags and v.status == VisitStatus.PENDING
             for v in target.get_visitors(game)
         ):
@@ -167,25 +182,25 @@ class Rolestop(Ability):
         if targets is None:
             targets = tuple(actor for _ in range(self.target_count))
         target, *_ = targets
-        max_protects: int | None
+        max_blocks: int | None
         if visit.ability_type is AbilityType.PASSIVE and hasattr(visit.ability, "max_uses"):
             uses_remaining = cast(XShot.XShotPrototype, visit.ability).max_uses - actor.uses.get(
                 visit.ability, 0
             )
-            max_protects = (
+            max_blocks = (
                 min(self.limit, uses_remaining) if self.limit is not None else uses_remaining
             )
         else:
-            max_protects = self.limit
+            max_blocks = self.limit
         successes: int = VisitStatus.FAILURE
         for v in target.get_visitors(game):
             if (
                 v.status == VisitStatus.PENDING
-                and "juggernaut" not in v.tags
+                and "unstoppable" not in v.tags
                 and self.block_check(actor, target, v, visit=visit)
             ):
                 successes += self.block_visit(actor, target, v, visit=visit)
-                if max_protects is not None and max_protects <= successes:
+                if max_blocks is not None and max_blocks <= successes:
                     return successes
         return successes
 
@@ -311,7 +326,7 @@ class Friendly_Neighbor(Role):
 
 class Gunsmith(Role):
     """Checks if a player has a gun in flavor.
-    
+
     Mafia (except Traitors, Doctors, and Medical Students), Cops, Vigilantes, Gunsmiths,
     Role Cops, Vanilla Cops, PT Cops, Vengefuls, Modifier Cops, Detectives, Neapolitans,
     Goon Cops, Agents, Auditors, Specialists, Backups and JoATs of the aforementioned roles,
@@ -385,9 +400,13 @@ class Jailkeeper(Role):
             if targets is None:
                 targets = tuple(actor for _ in range(self.target_count))
             target, *_ = targets
-            roleblock_player(game, target)
-            super().perform(game, actor, targets, visit=visit)
-            return VisitStatus.SUCCESS
+            roleblock_result = roleblock_player(game, target)
+            protection_result = super().perform(game, actor, targets, visit=visit)
+            return (
+                VisitStatus.SUCCESS
+                if roleblock_result or protection_result
+                else VisitStatus.FAILURE
+            )
 
         limit = None
 
@@ -398,6 +417,8 @@ class Juggernaut(Role):
     """If the actor performs the factional kill, it cannot be prevented."""
 
     class Juggernaut(Ability):
+        tags = frozenset({"juggernaut", "unstoppable"})
+
         def perform(
             self,
             game: Game,
@@ -405,22 +426,41 @@ class Juggernaut(Role):
             targets: Sequence[Player] | None = None,
             *,
             visit: Visit,
-        ) -> VisitStatus:
-            for visit in actor.get_visits(game):
+        ) -> int:
+            if targets is None:
+                targets = tuple(actor for _ in range(self.target_count))
+            target, *_ = targets
+            max_upgrades: int | None = None
+            if visit.ability_type is AbilityType.PASSIVE and hasattr(visit.ability, "max_uses"):
+                max_upgrades = cast(XShot.XShotPrototype, visit.ability).max_uses - actor.uses.get(
+                    visit.ability, 0
+                )
+            successes: int = VisitStatus.FAILURE
+            for visit in target.get_visits(game):
                 if "factional_kill" in visit.tags and visit.status == VisitStatus.PENDING:
-                    visit.tags |= frozenset({"juggernaut"})
-                    return VisitStatus.SUCCESS
-            return VisitStatus.FAILURE
+                    visit.tags |= frozenset({"unstoppable"})
+                    successes += VisitStatus.SUCCESS
+                    if max_upgrades is not None and max_upgrades <= successes:
+                        return successes
+            return successes
 
-    passives = (Juggernaut(),)
-    tags = frozenset({"juggernaut"})
+        def check(
+            self, game: Game, actor: Player, targets: Sequence[Player] | None = None
+        ) -> bool:
+            return (
+                (self.phase is None or self.phase == game.phase)
+                and actor.is_alive
+                and (targets is None or actor in targets)
+            )
+
+    actions = (Juggernaut(),)
 
 
 class Macho(Role):
     """Cannot be protected from kills."""
 
     class Macho(Rolestop):
-        tags = frozenset({"macho"})
+        tags = frozenset({"macho", "rolestop"})
 
         def block_check(
             self, actor: Player, target: Player, checked_visit: Visit, *, visit: Visit
@@ -512,8 +552,7 @@ class Roleblocker(Role):
             if targets is None:
                 targets = tuple(actor for _ in range(self.target_count))
             target, *_ = targets
-            roleblock_player(game, target)
-            return VisitStatus.SUCCESS
+            return roleblock_player(game, target)
 
     actions = (Roleblocker(),)
 
