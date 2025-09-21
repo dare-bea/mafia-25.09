@@ -74,6 +74,16 @@ class Resolver:
             successfully_resolved = True
         
         return successfully_resolved
+    
+    def add_passives(self, game: Game) -> None:
+        for player in game.players:
+            for ability in player.passives:
+                if ability.check(game, player):
+                    visit = Visit(actor=player, ability=ability, ability_type=AbilityType.PASSIVE)
+                    if ability.immediate:
+                        self.resolve_visit(game, visit)
+                    else:
+                        game.visits.append(visit)
 
 class Kill(Ability):
     """Kills a player."""
@@ -115,16 +125,14 @@ class InvestigativeAbility(Ability, ABC):
     def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
         ...
 
-class ProtectiveAbility(Ability):
+class Rolestop(Ability):
     """Protects a player from a kill."""
-    tags = frozenset({'protect'})
+    tags = frozenset({'rolestop'})
+
     def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> int:
         if targets is None:
             targets = tuple(actor for _ in range(self.target_count))
         target, *_ = targets
-        if any('macho' in v.tags and v.status == VisitStatus.PENDING
-                for v in target.get_visitors(game)):
-            return VisitStatus.PENDING
         max_protects: int | None
         if visit.ability_type is AbilityType.PASSIVE and hasattr(visit.ability, 'max_uses'):
             uses_remaining = cast(XShot.XShotPrototype, visit.ability).max_uses - actor.uses.get(visit.ability, 0)
@@ -133,18 +141,37 @@ class ProtectiveAbility(Ability):
             max_protects = self.limit
         successes: int = VisitStatus.FAILURE
         for v in target.get_visitors(game):
-            if ('kill' in v.tags and 'juggernaut' not in v.tags
-                and v.status == VisitStatus.PENDING):
-                successes += self.block_kill(actor, target, v, visit=visit)
+            if (v.status == VisitStatus.PENDING
+                and 'juggernaut' not in v.tags
+                and self.block_check(actor, target, v, visit=visit)):
+                successes += self.block_visit(actor, target, v, visit=visit)
                 if max_protects is not None and max_protects <= successes:
                     return successes
         return successes
     
-    def block_kill(self, actor: Player, target: Player, kill_visit: Visit, *, visit: Visit) -> VisitStatus:
-        kill_visit.status = VisitStatus.FAILURE
+    def block_visit(self, actor: Player, target: Player, blocked_visit: Visit, *, visit: Visit) -> VisitStatus:
+        blocked_visit.status = VisitStatus.FAILURE
         return VisitStatus.SUCCESS
+    
+    def block_check(self, actor: Player, target: Player, checked_visit: Visit, *, visit: Visit) -> bool:
+        return True
 
-    limit: int | None = 1
+    limit: int | None = None
+
+class ProtectiveAbility(Rolestop):
+    tags = frozenset({'protect'})
+
+    def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> int:
+        if targets is None:
+            targets = tuple(actor for _ in range(self.target_count))
+        target, *_ = targets
+        if any('macho' in v.tags and v.status == VisitStatus.PENDING
+                for v in target.get_visitors(game)):
+            return VisitStatus.PENDING
+        return super().perform(game, actor, targets, visit=visit)
+
+    def block_check(self, actor: Player, target: Player, checked_visit: Visit, *, visit: Visit) -> bool:
+        return 'kill' in checked_visit.tags
 
 # ROLES #
 
@@ -157,7 +184,7 @@ class Bodyguard(Role):
     class Bodyguard(ProtectiveAbility):
         def block_kill(self, actor: Player, target: Player, kill_visit: Visit, *, visit: Visit) -> VisitStatus:
             actor.kill(getattr(visit.ability, 'killer', 'Unknown'))
-            return super().block_kill(actor, target, kill_visit, visit=visit)
+            return super().block_visit(actor, target, kill_visit, visit=visit)
         limit = 1
     actions = (Bodyguard(),)
 
@@ -262,15 +289,10 @@ class Juggernaut(Role):
 
 class Macho(Role):
     """Cannot be protected from kills."""
-    class Macho(Ability):
+    class Macho(Rolestop):
         tags = frozenset({'macho'})
-        def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> int:
-            successes: int = VisitStatus.FAILURE
-            for visit in actor.get_visitors(game):
-                if 'protect' in visit.tags and visit.status == VisitStatus.PENDING:
-                    visit.status = VisitStatus.FAILURE
-                    successes +=  VisitStatus.SUCCESS
-            return successes
+        def block_check(self, actor: Player, target: Player, checked_visit: Visit, *, visit: Visit) -> bool:
+            return 'protect' in checked_visit.tags
     passives = (Macho(),)
     is_adjective: bool = True
 

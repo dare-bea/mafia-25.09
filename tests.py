@@ -32,7 +32,7 @@ def test_catastrophic_rule():
     town = examples.Town()
     mafia = examples.Mafia()
     
-    game = m.Game()
+    game = m.Game(1, m.Phase.NIGHT)
     alice = m.Player('Alice', cop, town, game=game)
     bob = m.Player('Bob', jailkeeper, town, game=game)
     eve = m.Player('Eve', roleblocker, mafia, game=game)
@@ -44,7 +44,6 @@ def test_catastrophic_rule():
         print(f'  Shared Actions: {player.shared_actions}')
         print()
     
-    game.phase = m.Phase.NIGHT
     for player in game.players:
         for ability in player.passives:
             if ability.check(game, player):
@@ -102,14 +101,7 @@ def test_xshot_role():
         print()
 
     game.phase, game.day_no = m.Phase.NIGHT, 1
-    for player in game.players:
-        for ability in player.passives:
-            if ability.check(game, player):
-                visit = m.Visit(actor=player, ability=ability, ability_type=m.AbilityType.PASSIVE)
-                if ability.immediate:
-                    r.resolve_visit(game, visit)
-                else:
-                    game.visits.append(visit)
+    r.add_passives(game)
 
     if alice.actions[0].check(game, alice, (bob,)):
         print(f"{alice.name} is using {alice.actions[0].id} on {bob.name}.")
@@ -139,7 +131,7 @@ def test_xshot_role():
                                ability=eve.shared_actions[0],
                                ability_type=m.AbilityType.SHARED_ACTION))
     r.resolve_game(game)
-    assert not bob.is_alive, "Bob is alive, expected 1-Shot Bulletproof to make Bulletproof fail."
+    assert not bob.is_alive, "Bob is alive, expected 1-Shot Bulletproof to be used."
     print()
 
     pprint(game)
@@ -150,7 +142,7 @@ def test_protection():
     town = examples.Town()
     mafia = examples.Mafia()
 
-    game = m.Game()
+    game = m.Game(1, m.Phase.NIGHT)
     alice = m.Player('Alice', examples.Doctor(), town, game=game)
     bob = m.Player('Bob', examples.Vanilla(), town, game=game)
     eve = m.Player('Eve', examples.Vanilla(), mafia, game=game)
@@ -162,6 +154,7 @@ def test_protection():
         print(f'  Shared Actions: {player.shared_actions}')
         print()
 
+    r.add_passives(game)
     game.visits.append(m.Visit(alice, (bob,),
                                ability=alice.actions[0],
                                ability_type=m.AbilityType.ACTION))
@@ -170,20 +163,66 @@ def test_protection():
                                ability_type=m.AbilityType.SHARED_ACTION))
 
     r.resolve_game(game)
+    pprint(game)
+
     assert bob.is_alive, "Bob is dead."
+
+def test_xshot_macho():
+    r = PrintResolver()
+
+    town = examples.Town()
+    mafia = examples.Mafia()
+
+    game = m.Game(1, m.Phase.NIGHT)
+    alice = m.Player('Alice', examples.Doctor(), town, game=game)
+    bob = m.Player('Bob', examples.XShot(1)(examples.Macho)(), town, game=game)
+    carol = m.Player('Carol', examples.XShot(1)(examples.Macho)(), town, game=game)
+    eve = m.Player('Eve', examples.Vanilla(), mafia, game=game)
+
+    for player in game.players:
+        print(f'{player}: {player.role_name}')
+        print(f'  Actions: {player.actions}')
+        print(f'  Passives: {player.passives}')
+        print(f'  Shared Actions: {player.shared_actions}')
+        print()
+
+    r.add_passives(game)
+    game.visits.append(m.Visit(alice, (bob,),
+                               ability=alice.actions[0],
+                               ability_type=m.AbilityType.ACTION))
+    game.visits.append(m.Visit(alice, (carol,),
+                               ability=alice.actions[0],
+                               ability_type=m.AbilityType.ACTION))
+    game.visits.append(m.Visit(alice, (carol,),
+                               ability=alice.actions[0],
+                               ability_type=m.AbilityType.ACTION))
+    game.visits.append(m.Visit(eve, (bob,),
+                               ability=eve.shared_actions[0],
+                               ability_type=m.AbilityType.SHARED_ACTION))
+    game.visits.append(m.Visit(eve, (carol,),
+                               ability=eve.shared_actions[0],
+                               ability_type=m.AbilityType.SHARED_ACTION))
+
+    r.resolve_game(game)
+    pprint(game)
+
+    assert not bob.is_alive, "Bob is alive."
+    assert carol.is_alive, "Carol is dead."
 
 TESTS = [
     test_catastrophic_rule,
     test_xshot_role,
-    test_protection
+    test_protection,
+    test_xshot_macho,
 ]
 
-def main():
+def main() -> None:
     from os import makedirs
     from contextlib import redirect_stdout, redirect_stderr
     from pathlib import Path
     from traceback import print_exception
     
+    successes: int = 0
     DIR = Path(__file__).parent
     makedirs(DIR / 'test_results', exist_ok=True)
     for test in TESTS:
@@ -204,7 +243,10 @@ def main():
             with open(DIR / 'test_results' / f'{test_name}.log', 'r') as f:
                 print(f.read())
             print(f'## TEST {test_name} PASSED ##')
+            successes += 1
         print()
+
+    print(f"{successes}/{len(TESTS)} tests succeeded! ({successes/len(TESTS):.1%})")
 
 if __name__ == '__main__':
     main()
