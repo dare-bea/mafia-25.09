@@ -5,29 +5,34 @@ Mafia game framework.
 from __future__ import annotations
 
 from collections.abc import Sequence, Iterator
+from typing import TypeVar, cast
 from enum import Enum, auto, IntEnum
 from dataclasses import InitVar, dataclass, field
 from abc import ABC, abstractmethod
-from typing import TypeVar, cast
+
 
 class VisitStatus(IntEnum):
     PENDING = -1
     FAILURE = 0
     SUCCESS = 1
 
+
 class Phase(Enum):
     DAY = auto()
     NIGHT = auto()
+
 
 class WinResult(Enum):
     ONGOING = 0
     WIN = 1
     LOSE = -1
 
+
 class AbilityType(Enum):
     ACTION = auto()
     PASSIVE = auto()
     SHARED_ACTION = auto()
+
 
 def role_name(role: Role, alignment: Alignment) -> str:
     """
@@ -46,6 +51,7 @@ def role_name(role: Role, alignment: Alignment) -> str:
         return f"{role} {alignment}"
     return f"{alignment} {role}"
 
+
 @dataclass(eq=False)
 class Visit:
     def __post_init__(self) -> None:
@@ -54,13 +60,13 @@ class Visit:
         self.tags = self.tags | self.ability.tags
 
     def __str__(self) -> str:
-        targets = ', '.join(t.name for t in self.targets)
+        targets = ", ".join(t.name for t in self.targets)
         return f"{self.actor.name}: {self.ability_type.name} {self.ability.id} -> {targets} - {self.status}"
-    
+
     def __repr__(self) -> str:
-        targets = ', '.join(t.name for t in self.targets)
+        targets = ", ".join(t.name for t in self.targets)
         return f"Visit({self.actor.name}, [{targets}], {self.ability!r}, {self.ability_type!r}, {self.status!r}, {self.tags!r})"
-    
+
     actor: Player
     targets: tuple[Player, ...] = None  # type: ignore[assignment]
     ability: Ability = field(kw_only=True)
@@ -70,6 +76,7 @@ class Visit:
 
     def perform(self, game: Game) -> int:
         return self.ability.perform(game, self.actor, self.targets, visit=self)
+
 
 class Ability:
     def __init__(
@@ -81,20 +88,24 @@ class Ability:
             self.id = id
         if tags is not None:
             self.tags = frozenset(tags)
-    
+
     def __init_subclass__(cls) -> None:
-        if 'id' not in cls.__dict__:
-            cls.id = cls.__name__.replace('_', ' ')
+        if "id" not in cls.__dict__:
+            cls.id = cls.__name__.replace("_", " ")
 
     def __str__(self) -> str:
         return self.id
-    
+
     def __repr__(self) -> str:
         values = self.__dict__.copy()
-        if 'tags' in values:
-            values['tags'] = set(values['tags'])
-        return f"{self.__class__.__name__}(" + ', '.join(f"{k}={v!r}" for k, v in values.items()) + ")"
-    
+        if "tags" in values:
+            values["tags"] = set(values["tags"])
+        return (
+            f"{self.__class__.__name__}("
+            + ", ".join(f"{k}={v!r}" for k, v in values.items())
+            + ")"
+        )
+
     id: str
     tags: frozenset[str] = frozenset()
 
@@ -109,8 +120,11 @@ class Ability:
             and (targets is None or actor not in targets)
         )
 
-    def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> int:
+    def perform(
+        self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit
+    ) -> int:
         raise NotImplementedError
+
 
 class Role:
     def __init__(
@@ -120,7 +134,7 @@ class Role:
         passives: tuple[Ability, ...] | None = None,
         shared_actions: tuple[Ability, ...] | None = None,
         tags: frozenset[str] | None = None,
-        is_adjective: bool | None = None
+        is_adjective: bool | None = None,
     ):
         if id is not None:
             self.id = id
@@ -134,19 +148,23 @@ class Role:
             self.tags = tags
         if is_adjective is not None:
             self.is_adjective = is_adjective
-    
+
     def __init_subclass__(cls) -> None:
-        if 'id' not in cls.__dict__:
-            cls.id = cls.__name__.replace('_', ' ')
+        if "id" not in cls.__dict__:
+            cls.id = cls.__name__.replace("_", " ")
 
     def __str__(self) -> str:
         return self.id
 
     def __repr__(self) -> str:
         values = self.__dict__.copy()
-        if 'tags' in values:
-            values['tags'] = set(values['tags'])
-        return f"{self.__class__.__name__}(" + ', '.join(f"{k}={v!r}" for k, v in values.items()) + ")"
+        if "tags" in values:
+            values["tags"] = set(values["tags"])
+        return (
+            f"{self.__class__.__name__}("
+            + ", ".join(f"{k}={v!r}" for k, v in values.items())
+            + ")"
+        )
 
     def player_init(self, game: Game, player: Player) -> None:
         """Called when a player is initialized with this role."""
@@ -158,6 +176,7 @@ class Role:
     shared_actions: tuple[Ability, ...] = ()
     tags: frozenset[str] = frozenset()
     is_adjective: bool = False
+
 
 class Alignment(ABC):
     def __init__(
@@ -187,17 +206,21 @@ class Alignment(ABC):
 
     def __str__(self) -> str:
         return self.id
-    
+
     def __repr__(self) -> str:
         values = self.__dict__.copy()
-        if 'tags' in values:
-            values['tags'] = set(values['tags'])
-        return f"{self.__class__.__name__}(" + ', '.join(f"{k}={v!r}" for k, v in values.items()) + ")"
-    
+        if "tags" in values:
+            values["tags"] = set(values["tags"])
+        return (
+            f"{self.__class__.__name__}("
+            + ", ".join(f"{k}={v!r}" for k, v in values.items())
+            + ")"
+        )
+
     def __init_subclass__(cls) -> None:
-        if 'id' not in cls.__dict__:
-            cls.id = cls.__name__.replace('_', ' ')
-    
+        if "id" not in cls.__dict__:
+            cls.id = cls.__name__.replace("_", " ")
+
     def player_init(self, game: Game, player: Player) -> None:
         """Called when a player is initialized with this alignment."""
         pass
@@ -213,9 +236,10 @@ class Alignment(ABC):
     def check_win(self, game: Game, player: Player) -> WinResult:
         return WinResult.WIN if player.is_alive else WinResult.LOSE
 
+
 class Faction(Alignment):
     id: str
-    
+
     def check_win(self, game: Game, player: Player) -> WinResult:
         faction_alive: bool = False
         opponent_alive: bool = False
@@ -231,7 +255,9 @@ class Faction(Alignment):
         return WinResult.ONGOING
 
 
-RAA = TypeVar('RAA', Ability, Role, Alignment)
+RAA = TypeVar("RAA", Ability, Role, Alignment)
+
+
 class Modifier:
     def __init__(
         self,
@@ -244,8 +270,8 @@ class Modifier:
             self.tags = tags
 
     def __init_subclass__(cls) -> None:
-        if 'id' not in cls.__dict__:
-            cls.id = cls.__name__.replace('_', ' ')
+        if "id" not in cls.__dict__:
+            cls.id = cls.__name__.replace("_", " ")
 
     id: str
     tags: frozenset[str] = frozenset()
@@ -274,14 +300,19 @@ class Modifier:
 
     def __repr__(self) -> str:
         values = self.__dict__.copy()
-        if 'tags' in values:
-            values['tags'] = set(values['tags'])
-        return f"{self.__class__.__name__}(" + ', '.join(f"{k}={v!r}" for k, v in values.items()) + ")"
+        if "tags" in values:
+            values["tags"] = set(values["tags"])
+        return (
+            f"{self.__class__.__name__}("
+            + ", ".join(f"{k}={v!r}" for k, v in values.items())
+            + ")"
+        )
+
 
 class AbilityModifier(Modifier, ABC):
     def __init_subclass__(cls) -> None:
-        if 'id' not in cls.__dict__:
-            cls.id = cls.__name__.replace('_', ' ')
+        if "id" not in cls.__dict__:
+            cls.id = cls.__name__.replace("_", " ")
 
     id: str
 
@@ -289,8 +320,10 @@ class AbilityModifier(Modifier, ABC):
     def modify_ability(self, ability: type[Ability]) -> type[Ability]:
         raise NotImplementedError
 
-    def get_modified_abilities(self, role: type[Role] | type[Alignment], *args, **kwargs) -> dict[str, list[Ability]]:
-        abilities: dict[str, list[Ability]] = {'actions': [], 'passives': [], 'shared_actions': []}
+    def get_modified_abilities(
+        self, role: type[Role] | type[Alignment], *args, **kwargs
+    ) -> dict[str, list[Ability]]:
+        abilities: dict[str, list[Ability]] = {"actions": [], "passives": [], "shared_actions": []}
         for ability_type in abilities:
             ability_inst: Ability
             for ability_inst in getattr(role, ability_type):
@@ -298,7 +331,8 @@ class AbilityModifier(Modifier, ABC):
                 abilities[ability_type].append(ability())
         return abilities
 
-    T = TypeVar('T', Role, Alignment)
+    T = TypeVar("T", Role, Alignment)
+
     def modify(self, cls: type[T], cls_dict: dict | None = None) -> type[T]:
         abilities = self.get_modified_abilities(cls)
         if cls_dict is None:
@@ -309,8 +343,8 @@ class AbilityModifier(Modifier, ABC):
                 "shared_actions": tuple(abilities["shared_actions"]),
                 "tags": cls.tags | self.tags,
             }
-            if issubclass(cls, Alignment) and 'demonym' in cls.__dict__ and cls.demonym:
-                cls_dict['demonym'] = f"{self.id} {cls.demonym}"
+            if issubclass(cls, Alignment) and "demonym" in cls.__dict__ and cls.demonym:
+                cls_dict["demonym"] = f"{self.id} {cls.demonym}"
         return type(
             f"{self!r}({cls.__name__})",
             (cls,),
@@ -319,13 +353,16 @@ class AbilityModifier(Modifier, ABC):
 
     def modify_role(self, role: type[Role], *args, **kwargs) -> type[Role]:
         return self.modify(role)
+
     def modify_alignment(self, alignment: type[Alignment], *args, **kwargs) -> type[Alignment]:
         return self.modify(alignment)
+
 
 @dataclass(eq=False)
 class ChatMessage:
     sender: Player | str
     content: str
+
 
 class Chat(list[ChatMessage]):
     def __init__(self, *args, participants: set[Player] | None = None, **kwargs) -> None:
@@ -333,12 +370,15 @@ class Chat(list[ChatMessage]):
         self.participants = set() if participants is None else participants
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({super().__repr__()}, participants={self.participants!r})"
-    
+        return (
+            f"{self.__class__.__name__}({super().__repr__()}, participants={self.participants!r})"
+        )
+
     participants: set[Player]
-    
+
     def send(self, sender: Player | str, content: str) -> None:
         self.append(ChatMessage(sender, content))
+
 
 @dataclass(eq=False)
 class Player:
@@ -365,11 +405,11 @@ class Player:
 
     def __str__(self) -> str:
         return self.name
-    
+
     @property
     def role_name(self) -> str:
         return role_name(self.role, self.alignment)
-    
+
     name: str
     role: Role
     alignment: Alignment
@@ -391,10 +431,11 @@ class Player:
     def get_visits(self, game: Game) -> Iterator[Visit]:
         """Get all visits that this player is performing."""
         return filter(lambda v: v.actor == self, game.visits)
-        
+
     def get_visitors(self, game: Game) -> Iterator[Visit]:
         """Get all visits that are targeting this player."""
         return filter(lambda v: self in v.targets, game.visits)
+
 
 @dataclass(eq=False)
 class Game:
@@ -403,7 +444,7 @@ class Game:
     chats: dict[str, Chat] = field(default_factory=dict, kw_only=True)
     day_no: int = 1
     phase: Phase = Phase.DAY
-    
+
     @property
     def alive_players(self) -> Iterator[Player]:
         return filter(lambda p: p.is_alive, self.players)

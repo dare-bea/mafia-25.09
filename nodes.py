@@ -1,8 +1,9 @@
-from collections import defaultdict
 from collections.abc import Iterable, Hashable
 from typing import TypeVar
+from collections import defaultdict
 
-Node = TypeVar('Node', bound=Hashable)
+Node = TypeVar("Node", bound=Hashable)
+
 
 def nodes_in_cycles(edges: Iterable[tuple[Node, Node]]) -> set[Node]:
     """
@@ -68,10 +69,11 @@ def nodes_in_cycles(edges: Iterable[tuple[Node, Node]]) -> set[Node]:
 
     return result
 
+
 if __name__ == "__main__":
-    edges = [(1,2), (2,3), (3,1), (3,4), (5,5), (6,7)]
+    edges = [(1, 2), (2, 3), (3, 1), (3, 4), (5, 5), (6, 7)]
     print(nodes_in_cycles(edges))  # -> {1, 2, 3, 5}
-    
+
     edges = [(1, 2), (2, 3), (3, 4), (4, 2)]
     print(nodes_in_cycles(edges))  # -> {2, 3, 4}
 

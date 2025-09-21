@@ -2,10 +2,13 @@ import mafia as m
 import examples
 from pprint import pprint
 
+
 class PrintResolver(examples.Resolver):
     def resolve_visit(self, game: m.Game, visit: m.Visit) -> int:
-        resolved_visits = set(v for v in game.visits if v.status is m.VisitStatus.PENDING) - {visit}
-        
+        resolved_visits = set(v for v in game.visits if v.status is m.VisitStatus.PENDING) - {
+            visit
+        }
+
         result = super().resolve_visit(game, visit)
 
         print(visit)
@@ -23,27 +26,28 @@ class PrintResolver(examples.Resolver):
             print(f"    {v}")
         return successfully_resolved
 
+
 def test_catastrophic_rule():
     r = PrintResolver()
-    
+
     cop = examples.Cop()
     jailkeeper = examples.Jailkeeper()
     roleblocker = examples.Roleblocker()
     town = examples.Town()
     mafia = examples.Mafia()
-    
+
     game = m.Game(1, m.Phase.NIGHT)
-    alice = m.Player('Alice', cop, town, game=game)
-    bob = m.Player('Bob', jailkeeper, town, game=game)
-    eve = m.Player('Eve', roleblocker, mafia, game=game)
-    
+    alice = m.Player("Alice", cop, town, game=game)
+    bob = m.Player("Bob", jailkeeper, town, game=game)
+    eve = m.Player("Eve", roleblocker, mafia, game=game)
+
     for player in game.players:
-        print(f'{player}: {player.role_name}')
-        print(f'  Actions: {player.actions}')
-        print(f'  Passives: {player.passives}')
-        print(f'  Shared Actions: {player.shared_actions}')
+        print(f"{player}: {player.role_name}")
+        print(f"  Actions: {player.actions}")
+        print(f"  Passives: {player.passives}")
+        print(f"  Shared Actions: {player.shared_actions}")
         print()
-    
+
     for player in game.players:
         for ability in player.passives:
             if ability.check(game, player):
@@ -52,31 +56,48 @@ def test_catastrophic_rule():
                     r.resolve_visit(game, visit)
                 else:
                     game.visits.append(visit)
-    
-    game.visits.append(m.Visit(actor=eve, targets=(alice,),
-                               ability=eve.shared_actions[0],
-                               ability_type=m.AbilityType.SHARED_ACTION))
-    game.visits.append(m.Visit(actor=bob, targets=(eve,),
-                               ability=bob.actions[0],
-                               ability_type=m.AbilityType.ACTION))
-    game.visits.append(m.Visit(actor=eve, targets=(bob,),
-                               ability=eve.actions[0],
-                               ability_type=m.AbilityType.ACTION))
-    game.visits.append(m.Visit(actor=eve, targets=(alice,),
-                               ability=eve.actions[0],
-                               ability_type=m.AbilityType.ACTION))
-    game.visits.append(m.Visit(actor=alice, targets=(eve,),
-                               ability=alice.actions[0],
-                               ability_type=m.AbilityType.ACTION))
-    
+
+    game.visits.append(
+        m.Visit(
+            actor=eve,
+            targets=(alice,),
+            ability=eve.shared_actions[0],
+            ability_type=m.AbilityType.SHARED_ACTION,
+        )
+    )
+    game.visits.append(
+        m.Visit(
+            actor=bob, targets=(eve,), ability=bob.actions[0], ability_type=m.AbilityType.ACTION
+        )
+    )
+    game.visits.append(
+        m.Visit(
+            actor=eve, targets=(bob,), ability=eve.actions[0], ability_type=m.AbilityType.ACTION
+        )
+    )
+    game.visits.append(
+        m.Visit(
+            actor=eve, targets=(alice,), ability=eve.actions[0], ability_type=m.AbilityType.ACTION
+        )
+    )
+    game.visits.append(
+        m.Visit(
+            actor=alice,
+            targets=(eve,),
+            ability=alice.actions[0],
+            ability_type=m.AbilityType.ACTION,
+        )
+    )
+
     r.resolve_game(game)
     print()
-    
+
     pprint(game)
 
     assert game.visits[4].status != m.VisitStatus.FAILURE and all(
         v.status == m.VisitStatus.FAILURE for v in game.visits[:4]
     )
+
 
 def test_xshot_role():
     r = PrintResolver()
@@ -89,15 +110,15 @@ def test_xshot_role():
     mafia = examples.Mafia()
 
     game = m.Game()
-    alice = m.Player('Alice', xshot_cop, town, game=game)
-    bob = m.Player('Bob', xshot_bulletproof, town, game=game)
-    eve = m.Player('Eve', vanilla, mafia, game=game)
+    alice = m.Player("Alice", xshot_cop, town, game=game)
+    bob = m.Player("Bob", xshot_bulletproof, town, game=game)
+    eve = m.Player("Eve", vanilla, mafia, game=game)
 
     for player in game.players:
-        print(f'{player}: {player.role_name}')
-        print(f'  Actions: {player.actions}')
-        print(f'  Passives: {player.passives}')
-        print(f'  Shared Actions: {player.shared_actions}')
+        print(f"{player}: {player.role_name}")
+        print(f"  Actions: {player.actions}")
+        print(f"  Passives: {player.passives}")
+        print(f"  Shared Actions: {player.shared_actions}")
         print()
 
     game.phase, game.day_no = m.Phase.NIGHT, 1
@@ -105,15 +126,25 @@ def test_xshot_role():
 
     if alice.actions[0].check(game, alice, (bob,)):
         print(f"{alice.name} is using {alice.actions[0].id} on {bob.name}.")
-        game.visits.append(m.Visit(actor=alice, targets=(bob,),
-                                   ability=alice.actions[0],
-                                   ability_type=m.AbilityType.ACTION))
+        game.visits.append(
+            m.Visit(
+                actor=alice,
+                targets=(bob,),
+                ability=alice.actions[0],
+                ability_type=m.AbilityType.ACTION,
+            )
+        )
     else:
         print(f"{alice.name} cannot use {alice.actions[0].id} on {bob.name}.")
         raise AssertionError("Expected check to succeed.")
-    game.visits.append(m.Visit(actor=eve, targets=(bob,),
-                               ability=eve.shared_actions[0],
-                               ability_type=m.AbilityType.SHARED_ACTION))
+    game.visits.append(
+        m.Visit(
+            actor=eve,
+            targets=(bob,),
+            ability=eve.shared_actions[0],
+            ability_type=m.AbilityType.SHARED_ACTION,
+        )
+    )
     r.resolve_game(game)
     assert bob.is_alive, "Bob is dead, expected Bulletproof to protect."
     print()
@@ -121,20 +152,31 @@ def test_xshot_role():
     game.phase, game.day_no = m.Phase.NIGHT, 2
     if alice.actions[0].check(game, alice, (eve,)):
         print(f"{alice.name} is using {alice.actions[0].id} on {eve.name}.")
-        game.visits.append(m.Visit(actor=alice, targets=(eve,),
-                                   ability=alice.actions[0],
-                                   ability_type=m.AbilityType.ACTION))
+        game.visits.append(
+            m.Visit(
+                actor=alice,
+                targets=(eve,),
+                ability=alice.actions[0],
+                ability_type=m.AbilityType.ACTION,
+            )
+        )
         raise AssertionError("Expected check to fail.")
     else:
         print(f"{alice.name} cannot use {alice.actions[0].id} on {eve.name}.")
-    game.visits.append(m.Visit(actor=eve, targets=(bob,),
-                               ability=eve.shared_actions[0],
-                               ability_type=m.AbilityType.SHARED_ACTION))
+    game.visits.append(
+        m.Visit(
+            actor=eve,
+            targets=(bob,),
+            ability=eve.shared_actions[0],
+            ability_type=m.AbilityType.SHARED_ACTION,
+        )
+    )
     r.resolve_game(game)
     assert not bob.is_alive, "Bob is alive, expected 1-Shot Bulletproof to be used."
     print()
 
     pprint(game)
+
 
 def test_protection():
     r = PrintResolver()
@@ -143,29 +185,32 @@ def test_protection():
     mafia = examples.Mafia()
 
     game = m.Game(1, m.Phase.NIGHT)
-    alice = m.Player('Alice', examples.Doctor(), town, game=game)
-    bob = m.Player('Bob', examples.Vanilla(), town, game=game)
-    eve = m.Player('Eve', examples.Vanilla(), mafia, game=game)
+    alice = m.Player("Alice", examples.Doctor(), town, game=game)
+    bob = m.Player("Bob", examples.Vanilla(), town, game=game)
+    eve = m.Player("Eve", examples.Vanilla(), mafia, game=game)
 
     for player in game.players:
-        print(f'{player}: {player.role_name}')
-        print(f'  Actions: {player.actions}')
-        print(f'  Passives: {player.passives}')
-        print(f'  Shared Actions: {player.shared_actions}')
+        print(f"{player}: {player.role_name}")
+        print(f"  Actions: {player.actions}")
+        print(f"  Passives: {player.passives}")
+        print(f"  Shared Actions: {player.shared_actions}")
         print()
 
     r.add_passives(game)
-    game.visits.append(m.Visit(alice, (bob,),
-                               ability=alice.actions[0],
-                               ability_type=m.AbilityType.ACTION))
-    game.visits.append(m.Visit(eve, (bob,),
-                               ability=eve.shared_actions[0],
-                               ability_type=m.AbilityType.SHARED_ACTION))
+    game.visits.append(
+        m.Visit(alice, (bob,), ability=alice.actions[0], ability_type=m.AbilityType.ACTION)
+    )
+    game.visits.append(
+        m.Visit(
+            eve, (bob,), ability=eve.shared_actions[0], ability_type=m.AbilityType.SHARED_ACTION
+        )
+    )
 
     r.resolve_game(game)
     pprint(game)
 
     assert bob.is_alive, "Bob is dead."
+
 
 def test_xshot_macho():
     r = PrintResolver()
@@ -174,40 +219,45 @@ def test_xshot_macho():
     mafia = examples.Mafia()
 
     game = m.Game(1, m.Phase.NIGHT)
-    alice = m.Player('Alice', examples.Doctor(), town, game=game)
-    bob = m.Player('Bob', examples.XShot(1)(examples.Macho)(), town, game=game)
-    carol = m.Player('Carol', examples.XShot(1)(examples.Macho)(), town, game=game)
-    eve = m.Player('Eve', examples.Vanilla(), mafia, game=game)
+    alice = m.Player("Alice", examples.Doctor(), town, game=game)
+    bob = m.Player("Bob", examples.XShot(1)(examples.Macho)(), town, game=game)
+    carol = m.Player("Carol", examples.XShot(1)(examples.Macho)(), town, game=game)
+    eve = m.Player("Eve", examples.Vanilla(), mafia, game=game)
 
     for player in game.players:
-        print(f'{player}: {player.role_name}')
-        print(f'  Actions: {player.actions}')
-        print(f'  Passives: {player.passives}')
-        print(f'  Shared Actions: {player.shared_actions}')
+        print(f"{player}: {player.role_name}")
+        print(f"  Actions: {player.actions}")
+        print(f"  Passives: {player.passives}")
+        print(f"  Shared Actions: {player.shared_actions}")
         print()
 
     r.add_passives(game)
-    game.visits.append(m.Visit(alice, (bob,),
-                               ability=alice.actions[0],
-                               ability_type=m.AbilityType.ACTION))
-    game.visits.append(m.Visit(alice, (carol,),
-                               ability=alice.actions[0],
-                               ability_type=m.AbilityType.ACTION))
-    game.visits.append(m.Visit(alice, (carol,),
-                               ability=alice.actions[0],
-                               ability_type=m.AbilityType.ACTION))
-    game.visits.append(m.Visit(eve, (bob,),
-                               ability=eve.shared_actions[0],
-                               ability_type=m.AbilityType.SHARED_ACTION))
-    game.visits.append(m.Visit(eve, (carol,),
-                               ability=eve.shared_actions[0],
-                               ability_type=m.AbilityType.SHARED_ACTION))
+    game.visits.append(
+        m.Visit(alice, (bob,), ability=alice.actions[0], ability_type=m.AbilityType.ACTION)
+    )
+    game.visits.append(
+        m.Visit(alice, (carol,), ability=alice.actions[0], ability_type=m.AbilityType.ACTION)
+    )
+    game.visits.append(
+        m.Visit(alice, (carol,), ability=alice.actions[0], ability_type=m.AbilityType.ACTION)
+    )
+    game.visits.append(
+        m.Visit(
+            eve, (bob,), ability=eve.shared_actions[0], ability_type=m.AbilityType.SHARED_ACTION
+        )
+    )
+    game.visits.append(
+        m.Visit(
+            eve, (carol,), ability=eve.shared_actions[0], ability_type=m.AbilityType.SHARED_ACTION
+        )
+    )
 
     r.resolve_game(game)
     pprint(game)
 
     assert not bob.is_alive, "Bob is alive."
     assert carol.is_alive, "Carol is dead."
+
 
 def test_tracker_roleblocker():
     r = PrintResolver()
@@ -216,34 +266,37 @@ def test_tracker_roleblocker():
     mafia = examples.Mafia()
 
     game = m.Game(1, m.Phase.NIGHT)
-    alice = m.Player('Alice', examples.Roleblocker(), town, game=game)
-    bob = m.Player('Bob', examples.Tracker(), town, game=game)
-    eve = m.Player('Eve', examples.Vanilla(), mafia, game=game)
+    alice = m.Player("Alice", examples.Roleblocker(), town, game=game)
+    bob = m.Player("Bob", examples.Tracker(), town, game=game)
+    eve = m.Player("Eve", examples.Vanilla(), mafia, game=game)
 
     for player in game.players:
-        print(f'{player}: {player.role_name}')
-        print(f'  Actions: {player.actions}')
-        print(f'  Passives: {player.passives}')
-        print(f'  Shared Actions: {player.shared_actions}')
+        print(f"{player}: {player.role_name}")
+        print(f"  Actions: {player.actions}")
+        print(f"  Passives: {player.passives}")
+        print(f"  Shared Actions: {player.shared_actions}")
         print()
 
     r.add_passives(game)
-    game.visits.append(m.Visit(alice, (eve,),
-                               ability=alice.actions[0],
-                               ability_type=m.AbilityType.ACTION))
-    game.visits.append(m.Visit(bob, (eve,),
-                               ability=bob.actions[0],
-                               ability_type=m.AbilityType.ACTION))
-    game.visits.append(m.Visit(eve, (bob,),
-                               ability=eve.shared_actions[0],
-                               ability_type=m.AbilityType.SHARED_ACTION))
-    
+    game.visits.append(
+        m.Visit(alice, (eve,), ability=alice.actions[0], ability_type=m.AbilityType.ACTION)
+    )
+    game.visits.append(
+        m.Visit(bob, (eve,), ability=bob.actions[0], ability_type=m.AbilityType.ACTION)
+    )
+    game.visits.append(
+        m.Visit(
+            eve, (bob,), ability=eve.shared_actions[0], ability_type=m.AbilityType.SHARED_ACTION
+        )
+    )
+
     r.resolve_game(game)
 
     pprint(game)
 
     print(bob.private_messages)
     assert bob.private_messages[0].content == "Eve did not target anyone."
+
 
 TESTS = {
     "test_catastrophic_rule": test_catastrophic_rule,
@@ -253,36 +306,38 @@ TESTS = {
     "test_tracker_roleblocker": test_tracker_roleblocker,
 }
 
+
 def main() -> None:
     from os import makedirs
-    from contextlib import redirect_stdout, redirect_stderr
+    from contextlib import redirect_stdout
     from pathlib import Path
     from traceback import print_exception
-    
+
     successes: int = 0
     DIR = Path(__file__).parent
-    makedirs(DIR / 'test_results', exist_ok=True)
+    makedirs(DIR / "test_results", exist_ok=True)
     for test_name, test_func in TESTS.items():
-        print(f'## TESTING: {test_name}() ##')
-        try: 
-            with open(DIR / 'test_results' / f'{test_name}.log', 'w') as f:
+        print(f"## TESTING: {test_name}() ##")
+        try:
+            with open(DIR / "test_results" / f"{test_name}.log", "w") as f:
                 with redirect_stdout(f):
                     test_func()
         except Exception as e:
-            with open(DIR / 'test_results' / f'{test_name}.log', 'r') as f:
+            with open(DIR / "test_results" / f"{test_name}.log", "r") as f:
                 print(f.read())
-            with open(DIR / 'test_results' / f'{test_name}.log', 'a') as f:
+            with open(DIR / "test_results" / f"{test_name}.log", "a") as f:
                 print_exception(e, file=f)
             print_exception(e)
-            print(f'## TEST {test_name} FAILED ##')
+            print(f"## TEST {test_name} FAILED ##")
         else:
-            with open(DIR / 'test_results' / f'{test_name}.log', 'r') as f:
+            with open(DIR / "test_results" / f"{test_name}.log", "r") as f:
                 print(f.read())
-            print(f'## TEST {test_name} PASSED ##')
+            print(f"## TEST {test_name} PASSED ##")
             successes += 1
         print()
 
-    print(f"{successes}/{len(TESTS)} tests succeeded! ({successes/len(TESTS):.1%})")
+    print(f"{successes}/{len(TESTS)} tests succeeded! ({successes / len(TESTS):.1%})")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
