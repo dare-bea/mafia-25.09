@@ -264,12 +264,13 @@ class Macho(Role):
     """Cannot be protected from kills."""
     class Macho(Ability):
         tags = frozenset({'macho'})
-        def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> VisitStatus:
+        def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> int:
+            successes: int = VisitStatus.FAILURE
             for visit in actor.get_visitors(game):
                 if 'protect' in visit.tags and visit.status == VisitStatus.PENDING:
                     visit.status = VisitStatus.FAILURE
-                    return VisitStatus.SUCCESS
-            return VisitStatus.FAILURE
+                    successes +=  VisitStatus.SUCCESS
+            return successes
     passives = (Macho(),)
     is_adjective: bool = True
 
