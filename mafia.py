@@ -4,9 +4,9 @@ Mafia game framework.
 
 from __future__ import annotations
 
-from collections.abc import Sequence, Iterator
+from collections.abc import Callable, Sequence, Iterator
 from types import EllipsisType
-from typing import Any, TypeVar, cast
+from typing import Any, TypeGuard, TypeVar, cast
 from enum import Enum, auto, IntEnum
 from dataclasses import InitVar, dataclass, field
 from abc import ABC, abstractmethod
@@ -129,7 +129,7 @@ class Ability:
         raise NotImplementedError
 
 
-class Role:
+class Role:    
     def __init__(
         self,
         id: str | None = None,
@@ -180,6 +180,27 @@ class Role:
     tags: frozenset[str] = frozenset()
     is_adjective: bool = False
 
+    modifiers: frozenset[str] = frozenset()
+
+    def is_role(self, role: Any) -> TypeGuard[Role | str | type[Role] | Modifier | type[Modifier] | Callable[..., type[Role]]]:
+        if isinstance(role, str):
+            return self.id == role or role in self.modifiers
+        if isinstance(role, Role):
+            return self.id == role.id or isinstance(self, type(role))
+        if isinstance(role, type) and issubclass(role, Role):
+            return isinstance(self, role)
+        if isinstance(role, Modifier):
+            return role.id in self.modifiers or any(isinstance(m, type(role)) for m in self.modifiers)
+        if isinstance(role, type) and issubclass(role, Modifier):
+            return any(isinstance(m, role) for m in self.modifiers)
+        if hasattr(role, "id"):
+            return self.id == role.id or role.id in self.modifiers
+        if callable(role):
+            try:
+                return self.is_role(role())
+            except TypeError:
+                pass
+        return False
 
 class Alignment(ABC):
     def __init__(

@@ -3,7 +3,7 @@ Simple Normal roles, abilities, and alignments.
 """
 
 from collections.abc import Sequence, Callable, Collection
-from typing import Any, TypeVar
+from typing import Any, TypeGuard, TypeVar
 from abc import ABC, abstractmethod
 from mafia import (
     AbilityModifier,
@@ -11,6 +11,7 @@ from mafia import (
     Alignment,
     Chat,
     Faction,
+    Modifier,
     Role,
     Ability,
     Game,
@@ -34,36 +35,58 @@ def roleblock_player(game: Game, player: Player) -> VisitStatus:
 
 
 class Resolver:
-    def resolve_visit(self, game: Game, visit: Visit) -> int:
-        """Resolve a visit and return the result. If the visit cannot be resolved, return VisitStatus.PENDING."""
-        # Check if the ability is immediate. If so, perform the visit.
-        if visit.ability.immediate or "unstoppable" in visit.tags:
-            status = visit.perform(game)
-            visit.status = status
-            if visit.ability_type is AbilityType.PASSIVE and status != VisitStatus.PENDING:
-                visit.actor.uses.setdefault(visit.ability, 0)
-                visit.actor.uses[visit.ability] += status
-            return status
-        # Check if the actor has a pending roleblock.
-        if visit.ability_type is not AbilityType.PASSIVE and any(
-            v.status == VisitStatus.PENDING and "roleblock" in v.tags
-            for v in visit.actor.get_visitors(game)
-        ):
-            return VisitStatus.PENDING
-        # Check if a target has a pending rolestop or juggernaut.
-        if visit.ability_type is not AbilityType.PASSIVE and any(
-            v.status == VisitStatus.PENDING and ("rolestop" in v.tags or "juggernaut" in v.tags)
-            for t in visit.targets
-            for v in t.get_visitors(game)
-        ):
-            return VisitStatus.PENDING
-        # Perform the visit.
+    """Resolves visits in a game."""
+    
+    def do_visit(self, game: Game, visit: Visit) -> int:
         status = visit.perform(game)
         visit.status = status
         if visit.ability_type is AbilityType.PASSIVE and status != VisitStatus.PENDING:
             visit.actor.uses.setdefault(visit.ability, 0)
             visit.actor.uses[visit.ability] += status
         return status
+        
+    
+    def resolve_visit(self, game: Game, visit: Visit) -> int:
+        """Resolve a visit and return the result. If the visit cannot be resolved, return VisitStatus.PENDING."""
+        # Perform if the ability is immediate.
+        if visit.ability.immediate:
+            return self.do_visit(game, visit)
+        # Wait if the target has a pending commute.
+        if any(
+            "commute" in v.tags
+            for t in visit.targets
+            for v in t.get_visitors(game)
+            if v.status == VisitStatus.PENDING
+        ):
+            return VisitStatus.PENDING
+        # Perform if the visit is unstoppable.
+        if "unstoppable" in visit.tags:
+            return self.do_visit(game, visit)
+        # Wait if the actor has a pending roleblock.
+        if visit.ability_type is not AbilityType.PASSIVE and any(
+            "roleblock" in v.tags
+            for v in visit.actor.get_visitors(game) 
+            if v.status == VisitStatus.PENDING
+        ):
+            return VisitStatus.PENDING
+        # Wait if the target has a pending rolestop.
+        if visit.ability_type is not AbilityType.PASSIVE and any(
+            "rolestop" in v.tags
+            for t in visit.targets
+            for v in t.get_visitors(game)
+            if v.status == VisitStatus.PENDING
+        ):
+            return VisitStatus.PENDING
+        # Wait if the target has a pending juggernaut (and the visit roleblocks).
+        if "roleblock" in visit.tags and any(
+            "juggernaut" in v.tags
+            for t in visit.targets
+            for v in t.get_visitors(game)
+            if v.status == VisitStatus.PENDING
+        ):
+            return VisitStatus.PENDING
+        # Perform the visit.
+        return self.do_visit(game, visit)
 
     def resolve_game(self, game: Game) -> None:
         """Resolve all visits in the game."""
@@ -80,7 +103,14 @@ class Resolver:
         while failed_to_resolve:
             failed_to_resolve = False
             successfully_resolved: bool = False
-            for visit in game.visits:
+            for visit in sorted(
+                game.visits,
+                key=lambda v: (
+                    "simultaneous" in v.tags,  # Prioritize simultaneous visits.
+                    "unstoppable" in v.tags,  # Prioritize unstoppable visits.
+                ),
+                reverse=True,
+            ):
                 if visit.status != VisitStatus.PENDING:
                     continue
                 result = self.resolve_visit(game, visit)
@@ -144,8 +174,9 @@ class Kill(Ability):
             targets = tuple(actor for _ in range(self.target_count))
         target, *_ = targets
         if "unstoppable" not in visit.tags and any(
-            "protect" in v.tags and v.status == VisitStatus.PENDING
+            "protect" in v.tags
             for v in target.get_visitors(game)
+            if v.status == VisitStatus.PENDING
         ):
             return VisitStatus.PENDING
         target.kill(self.killer)
@@ -172,7 +203,7 @@ class InvestigativeAbility(Ability, ABC):
 
 
 class Rolestop(Ability):
-    """Protects a player from a kill."""
+    """Prevents abilities from being performed on a player."""
 
     tags = frozenset({"rolestop"})
 
@@ -182,6 +213,15 @@ class Rolestop(Ability):
         if targets is None:
             targets = tuple(actor for _ in range(self.target_count))
         target, *_ = targets
+        # Check if a visitor to the target has a pending juggernaut.
+        if any(
+            "juggernaut" in v.tags
+            for t in target.get_visitors(game)
+            if t.status == VisitStatus.PENDING
+            for v in t.actor.get_visitors(game)
+            if v.status == VisitStatus.PENDING
+        ):
+            return VisitStatus.PENDING
         max_blocks: int | None
         if visit.ability_type is AbilityType.PASSIVE and isinstance(
             visit.ability, XShot.XShotPrototype
@@ -229,8 +269,9 @@ class ProtectiveAbility(Rolestop):
             targets = tuple(actor for _ in range(self.target_count))
         target, *_ = targets
         if any(
-            "macho" in v.tags and v.status == VisitStatus.PENDING
+            "macho" in v.tags
             for v in target.get_visitors(game)
+            if v.status == VisitStatus.PENDING
         ):
             return VisitStatus.PENDING
         return super().perform(game, actor, targets, visit=visit)
@@ -241,7 +282,7 @@ class ProtectiveAbility(Rolestop):
         return "kill" in checked_visit.tags
 
 
-# ROLES #
+# SIMPLE NORMAL ROLES #
 
 
 class Vanilla(Role):
@@ -257,7 +298,7 @@ class Bodyguard(Role):
         def block_visit(
             self, actor: Player, target: Player, blocked_visit: Visit, *, visit: Visit
         ) -> VisitStatus:
-            actor.kill(getattr(visit.ability, "killer", "Unknown"))
+            actor.kill(self.id)
             return super().block_visit(actor, target, blocked_visit, visit=visit)
 
         limit = 1
@@ -367,7 +408,8 @@ class Innocent_Child(Role):
         def check(
             self, game: Game, actor: Player, targets: Sequence[Player] | None = None
         ) -> bool:
-            return super().check(game, actor, targets)
+            # Innocent Child can only be used once.
+            return super().check(game, actor, targets) and actor.uses.get(self, 0) == 0
 
         def perform(
             self,
@@ -437,9 +479,9 @@ class Juggernaut(Role):
             ):
                 max_upgrades = visit.ability.max_uses - actor.uses.get(visit.ability, 0)
             successes: int = 0
-            for visit in target.get_visits(game):
+            for v in target.get_visits(game):
                 if "factional_kill" in visit.tags and visit.status == VisitStatus.PENDING:
-                    visit.tags |= frozenset({"unstoppable"})
+                    v.tags |= frozenset({"unstoppable"})
                     successes += 1
                     if max_upgrades is not None and max_upgrades <= successes:
                         return successes
@@ -495,7 +537,7 @@ class Neapolitan(Role):
         tags = frozenset({"investigate", "gun"})
 
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
-            if target.role.id == "Vanilla" and "town" in target.alignment.tags:
+            if target.role.is_role(Vanilla) and "town" in target.alignment.tags:
                 return f"{target.name} is a Vanilla Townie."
             else:
                 return f"{target.name} is not a Vanilla Townie."
@@ -584,6 +626,7 @@ class Tracker(Role):
                     tag not in visit.tags for tag in {"hidden", "roleblocked"}
                 ):
                     visits.extend(visit.targets)
+            
             if visits:
                 return f"{target.name} targeted {', '.join(p.name for p in visits)}."
             else:
@@ -599,7 +642,7 @@ class Vanilla_Cop(Role):
         tags = frozenset({"investigate", "gun"})
 
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
-            if target.role.id == "Vanilla":
+            if target.role.is_role(Vanilla):
                 return f"{target.name} is Vanilla."
             else:
                 return f"{target.name} is not Vanilla."
@@ -636,6 +679,272 @@ class Watcher(Role):
 
     actions = (Watcher(),)
 
+
+# REGULAR NORMAL ROLES #
+
+class Alien(Role):
+    """Kidnaps a player at night to make all actions targeting them
+    fail, and prevent them from using any abilities.
+    """
+    
+    class Alien(Rolestop):
+        tags = frozenset({"rolestop", "roleblock"})
+
+        def perform(self,
+                    game: Game,
+                    actor: Player,
+                    targets: Sequence[Player] | None = None,
+                    *,
+                    visit: Visit) -> VisitStatus:
+            if targets is None:
+                targets = tuple(actor for _ in range(self.target_count))
+            target, *_ = targets
+            roleblock_result = roleblock_player(game, target)
+            rolestop_result = super().perform(game, actor, targets, visit=visit)
+            return (
+                VisitStatus.SUCCESS
+                if roleblock_result or rolestop_result
+                else VisitStatus.FAILURE
+            )
+    
+    actions = (Alien(),)
+
+
+class Ascetic(Role):
+    """Non-killing actions targeting this player will fail."""
+
+    class Ascetic(Rolestop):
+        def block_check(
+            self, actor: Player, target: Player, checked_visit: Visit, *, visit: Visit
+        ) -> bool:
+            return "kill" not in checked_visit.tags
+
+    passives = (Ascetic(),)
+    is_adjective: bool = True
+
+
+class Commuter(Role):
+    """Commutes at night to make any actions targeting them fail."""
+
+    class Commuter(Rolestop):
+        tags = frozenset({"rolestop", "commute", "unstoppable"})
+
+        def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> VisitStatus:
+            if targets is None:
+                targets = tuple(actor for _ in range(self.target_count))
+            target, *_ = targets
+            success = VisitStatus.FAILURE
+            for v in target.get_visitors(game):
+                if v.status == VisitStatus.PENDING:
+                    v.status = VisitStatus.FAILURE
+                    success = VisitStatus.SUCCESS
+            for v in target.get_visits(game):
+                if v is not visit and v.status == VisitStatus.PENDING:
+                    v.status = VisitStatus.FAILURE
+            return success
+        
+        def check(
+            self, game: Game, actor: Player, targets: Sequence[Player] | None = None
+        ) -> bool:
+            # Commuter can only target self.
+            return (
+                (self.phase is None or self.phase == game.phase)
+                and actor.is_alive
+                and (targets is None or actor in targets)
+            )
+
+    actions = (Commuter(),)
+
+
+class Companion(Role):
+    """Is informed that another player is Town."""
+    
+    class Companion(Ability):
+        tags = frozenset({"inform"})
+        immediate = True
+        target_count = 0
+
+        def __init__(self, informed_player: Player | None = None, id: str | None = None, tags: frozenset[str] | None = None):
+            self.informed_player = informed_player
+            super().__init__(id, tags)
+
+        def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> VisitStatus:
+            if self.informed_player is None:
+                raise TypeError("Companion has no informed player.")
+            message: str = f"{self.informed_player.name} is aligned with the Town."
+            actor.private_messages.send(self.id, message)
+            return VisitStatus.SUCCESS
+        
+        def check(self, game: Game, actor: Player, targets: Sequence[Player] | None = None) -> bool:
+            # Companion can only be used once.
+            return super().check(game, actor, targets) and actor.uses.get(self, 0) == 0
+
+    def __init__(self, id: str | None = None, actions: tuple[Ability, ...] | None = None, passives: tuple[Ability, ...] | None = None, shared_actions: tuple[Ability, ...] | None = None, tags: frozenset[str] | None = None, is_adjective: bool | None = None, informed_player: Player | None = None):
+        super().__init__(id, actions, passives, shared_actions, tags, is_adjective)
+        self.informed_player = informed_player
+
+    def player_init(self, game: Game, player: Player) -> None:
+        player.actions.append(Companion.Companion(self.informed_player))
+
+
+class Detective(Role):
+    """Checks if a player attempted to kill someone."""
+
+    class Detective(InvestigativeAbility):
+        tags = frozenset({"investigate", "gun"})
+
+
+        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+            if any(
+                "kill" in v.tags
+                for v in target.get_visits(game)
+                if v.ability_type is not AbilityType.PASSIVE
+            ):
+                return f"{target.name} has tried to kill someone!"
+            else:
+                return f"{target.name} has not tried to kill anyone."
+
+    actions = (Detective(),)
+
+
+class Fruit_Vendor(Role):
+    """Tells a player that they were given fruit, but not who gave it to them."""
+
+    class Fruit_Vendor(Ability):
+        def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> VisitStatus:
+            if targets is None:
+                targets = tuple(actor for _ in range(self.target_count))
+            target, *_ = targets
+            target.private_messages.send(self.id, "You were given fruit.")
+            return VisitStatus.SUCCESS
+
+    actions = (Fruit_Vendor(),)
+
+
+class Goon_Cop(Role):
+    """Checks if a player is a Mafia Goon."""
+
+    class Goon_Cop(InvestigativeAbility):
+        tags = frozenset({"investigate", "gun"})
+
+        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+            if target.role.is_role(Vanilla) and "mafia" in target.alignment.tags:
+                return f"{target.name} is a Mafia Goon!"
+            else:
+                return f"{target.name} is not a Mafia Goon."
+
+    actions = (Goon_Cop(),)
+
+
+class Hider(Role):
+    """Protects the actor from direct kills, but if the target is killed, the actor is also killed."""
+
+    class Protect_Self(ProtectiveAbility):
+        def block_check(
+            self, actor: Player, target: Player, checked_visit: Visit, *, visit: Visit
+        ):
+            return (
+                super().block_check(actor, target, checked_visit, visit=visit)
+                and checked_visit.ability_type is not AbilityType.PASSIVE
+            )
+    
+    class Lifelink(Ability):
+        def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> VisitStatus:
+            if targets is None:
+                targets = tuple(actor for _ in range(self.target_count))
+            target, *_ = targets
+            if any(
+                "kill" in v.tags
+                for v in target.get_visitors(game)
+                if v.status == VisitStatus.SUCCESS
+                and v.ability_type is not AbilityType.PASSIVE
+            ):
+                actor.kill(self.id)
+                return VisitStatus.FAILURE
+            if any(
+                "kill" in v.tags
+                for v in target.get_visitors(game)
+                if v.status == VisitStatus.PENDING
+                and v.ability_type is not AbilityType.PASSIVE
+            ):
+                return VisitStatus.PENDING
+            return VisitStatus.SUCCESS
+
+    class Hider(Ability):
+        tags = frozenset("simultaneous")
+        
+        def __init__(self, id: str | None = None, tags: frozenset[str] | None = None):
+            super().__init__(id, tags)
+            self.abilities: list[Ability] = [
+                Hider.Protect_Self(self.id, Hider.Protect_Self.tags | {"hidden"}),
+                Hider.Lifelink(self.id, Hider.Lifelink.tags | {"hidden"}),
+            ]
+
+        def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> VisitStatus:
+            if targets is None:
+                targets = tuple(actor for _ in range(self.target_count))
+            visit_targets: list[tuple[Player, ...]] = [(actor,), tuple(targets)]
+            visit_types: list[AbilityType] = [AbilityType.PASSIVE, AbilityType.ACTION]
+            for ability, a_targets, a_type in zip(self.abilities, visit_targets, visit_types):
+                visit = Visit(actor=actor, targets=a_targets, ability=ability, ability_type=a_type)
+                game.visits.append(visit)
+            return VisitStatus.SUCCESS
+    
+    actions = (Hider(),)
+
+@lambda x: x()
+class Jack_of_All_Trades:
+    """Has multiple pre-determined 1-Shot roles."""
+    def __call__(self, roles: tuple[type[Role], ...] | None = None, id: str | None = None, tags: frozenset[str] | None = None) -> type[Role]:
+        if roles is None:
+            roles = (Cop, Vigilante, Doctor, Roleblocker)
+        _roles = roles
+
+        if id is None:
+            id = self.id
+        _id = id
+
+        if tags is None:
+            tags = frozenset().union(*(r.tags for r in roles))
+        _tags = tags
+        
+        class Jack_of_All_Trades(Role):
+            def __init__(self, id: str | None = None, actions: tuple[Ability, ...] | None = None, passives: tuple[Ability, ...] | None = None, shared_actions: tuple[Ability, ...] | None = None, tags: frozenset[str] | None = None, is_adjective: bool | None = None):
+                super().__init__(id, actions, passives, shared_actions, tags)
+            
+            roles = tuple(XShot(1)(r)() for r in _roles)
+            tags = _tags
+            actions = tuple(XShot(1)(type(a))(a.id, a.tags) for r in roles for a in r.actions)
+            passives = tuple(XShot(1)(type(a))(a.id, a.tags) for r in roles for a in r.passives)
+            shared_actions = tuple(XShot(1)(type(a))(a.id, a.tags) for r in roles for a in r.shared_actions)
+            
+            id = f"{_id} {', '.join(r.id for r in roles)}"
+    
+            def is_role(self, role: Any) -> TypeGuard[Role | str | type[Role] | Callable[..., type[Role]]]:
+                return role is Jack_of_All_Trades or super().is_role(role) or any(r.is_role(role) for r in self.roles)
+    
+        return Jack_of_All_Trades
+
+    id: str = "Jack of All Trades"
+
+
+class Medical_Student(Role):
+    """Protects a Vanilla player from one kill."""
+    class Medical_Student(Doctor.Doctor):
+        tags = frozenset({"protect", "mafia_no_gun"})
+
+        def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> int:
+            if targets is None:
+                targets = tuple(actor for _ in range(self.target_count))
+            target, *_ = targets
+            if target.role.is_role(Vanilla):
+                return super().perform(game, actor, targets, visit=visit)
+            return VisitStatus.FAILURE
+
+    actions = (Medical_Student(),)
+
+
+class 
 
 # ROLE MODIFIERS #
 
