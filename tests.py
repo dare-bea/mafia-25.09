@@ -1,3 +1,4 @@
+from typing import Callable
 import mafia as m
 import examples
 from pprint import pprint
@@ -27,7 +28,7 @@ class PrintResolver(examples.Resolver):
         return successfully_resolved
 
 
-def test_catastrophic_rule():
+def test_catastrophic_rule() -> None:
     r = PrintResolver()
 
     cop = examples.Cop()
@@ -99,7 +100,7 @@ def test_catastrophic_rule():
     )
 
 
-def test_xshot_role():
+def test_xshot_role() -> None:
     r = PrintResolver()
 
     vanilla = examples.Vanilla()
@@ -178,7 +179,7 @@ def test_xshot_role():
     assert not bob.is_alive, "Bob is alive, expected 1-Shot Bulletproof to be used."
 
 
-def test_protection():
+def test_protection() -> None:
     r = PrintResolver()
 
     town = examples.Town()
@@ -213,7 +214,7 @@ def test_protection():
     assert bob.is_alive, "Bob is dead."
 
 
-def test_xshot_macho():
+def test_xshot_macho() -> None:
     r = PrintResolver()
 
     town = examples.Town()
@@ -261,7 +262,7 @@ def test_xshot_macho():
     assert carol.is_alive, "Carol is dead."
 
 
-def test_tracker_roleblocker():
+def test_tracker_roleblocker() -> None:
     r = PrintResolver()
 
     town = examples.Town()
@@ -300,7 +301,7 @@ def test_tracker_roleblocker():
     assert bob.private_messages[0].content == "Eve did not target anyone."
 
 
-def test_juggernaut():
+def test_juggernaut() -> None:
     r = PrintResolver()
 
     town = examples.Town()
@@ -337,9 +338,10 @@ def test_juggernaut():
 
     assert not bob.is_alive, "Factional Kill was roleblocked, expected Juggernaut to force kill."
 
+
 # DO TESTS #
 
-TESTS = {
+TESTS: dict[str, Callable[[], None]] = {
     "test_catastrophic_rule": test_catastrophic_rule,
     "test_xshot_role": test_xshot_role,
     "test_protection": test_protection,
@@ -351,6 +353,7 @@ TESTS = {
 
 def main() -> None:
     from os import makedirs
+    from sys import stderr
     from contextlib import redirect_stdout
     from pathlib import Path
     from traceback import print_exception
@@ -379,6 +382,21 @@ def main() -> None:
         print()
 
     print(f"{successes}/{len(TESTS)} tests succeeded! ({successes / len(TESTS):.1%})")
+    print()
+
+    try:
+        import mypy.api
+    except ImportError:
+        print("Could not find module 'mypy.api'. Skipping type-checking...")
+    else:
+        for x in range(10, 14):
+            print(f"Type-checking Python 3.{x}:")
+            result = mypy.api.run(["--python-version", f"3.{x}", "--strict", "--pretty", str(DIR)])
+            if result[0]:
+                print(result[0].rstrip())
+
+            if result[1]:
+                print(result[1].rstrip(), file=stderr)
 
 
 if __name__ == "__main__":

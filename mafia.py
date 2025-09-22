@@ -5,7 +5,7 @@ Mafia game framework.
 from __future__ import annotations
 
 from collections.abc import Sequence, Iterator
-from typing import TypeVar, cast
+from typing import Any, TypeVar, cast
 from enum import Enum, auto, IntEnum
 from dataclasses import InitVar, dataclass, field
 from abc import ABC, abstractmethod
@@ -41,7 +41,7 @@ def role_name(role: Role, alignment: Alignment) -> str:
     - `role.is_adjective` -- Use `{role} {alignment.demonym}` instead of `{alignment} {role}`.
     - `alignment.demonym` -- defaults to `str(alignment)`.
     - `alignment.role_names[role.id]` -- a custom role name.
-    
+
     `alignment.demonym` and `alignment.role_names[role.id]` both support format strings, passing `role` and `alignment`
     """
     role_name_override: str | None = alignment.role_names.get(role.id)
@@ -257,7 +257,7 @@ class Faction(Alignment):
         return WinResult.ONGOING
 
 
-RAA = TypeVar("RAA", Ability, Role, Alignment)
+RAA = TypeVar("RAA", bound=Ability | Role | Alignment)
 
 
 class Modifier:
@@ -287,7 +287,7 @@ class Modifier:
     def modify_alignment(self, alignment: type[Alignment]) -> type[Alignment]:
         raise TypeError(f"Cannot apply {self.__class__.__name__} to {alignment.__name__}")
 
-    def __call__(self, cls: type[RAA], *args, **kwargs) -> type[RAA]:
+    def __call__(self, cls: type[RAA], *args: Any, **kwargs: Any) -> type[RAA]:
         result: type[RAA]
         if issubclass(cls, Ability):
             result = cast(type[RAA], self.modify_ability(cls, *args, **kwargs))
@@ -323,7 +323,7 @@ class AbilityModifier(Modifier, ABC):
         raise NotImplementedError
 
     def get_modified_abilities(
-        self, role: type[Role] | type[Alignment], *args, **kwargs
+        self, role: type[Role] | type[Alignment], *args: Any, **kwargs: Any
     ) -> dict[str, list[Ability]]:
         abilities: dict[str, list[Ability]] = {"actions": [], "passives": [], "shared_actions": []}
         for ability_type in abilities:
@@ -335,7 +335,7 @@ class AbilityModifier(Modifier, ABC):
 
     T = TypeVar("T", Role, Alignment)
 
-    def modify(self, cls: type[T], cls_dict: dict | None = None) -> type[T]:
+    def modify(self, cls: type[T], cls_dict: dict[str, Any] | None = None) -> type[T]:
         abilities = self.get_modified_abilities(cls)
         if cls_dict is None:
             cls_dict = {
@@ -353,10 +353,12 @@ class AbilityModifier(Modifier, ABC):
             cls_dict,
         )
 
-    def modify_role(self, role: type[Role], *args, **kwargs) -> type[Role]:
+    def modify_role(self, role: type[Role], *args: Any, **kwargs: Any) -> type[Role]:
         return self.modify(role)
 
-    def modify_alignment(self, alignment: type[Alignment], *args, **kwargs) -> type[Alignment]:
+    def modify_alignment(
+        self, alignment: type[Alignment], *args: Any, **kwargs: Any
+    ) -> type[Alignment]:
         return self.modify(alignment)
 
 
@@ -367,7 +369,7 @@ class ChatMessage:
 
 
 class Chat(list[ChatMessage]):
-    def __init__(self, *args, participants: set[Player] | None = None, **kwargs) -> None:
+    def __init__(self, *args: Any, participants: set[Player] | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.participants = set() if participants is None else participants
 
@@ -441,11 +443,11 @@ class Player:
 
 @dataclass(eq=False)
 class Game:
+    day_no: int = 1
+    phase: Phase = Phase.DAY
     players: list[Player] = field(default_factory=list, kw_only=True)
     visits: list[Visit] = field(default_factory=list, kw_only=True)
     chats: dict[str, Chat] = field(default_factory=dict, kw_only=True)
-    day_no: int = 1
-    phase: Phase = Phase.DAY
 
     @property
     def alive_players(self) -> Iterator[Player]:

@@ -129,7 +129,7 @@ class Kill(Ability):
         if killer is not None:
             self.killer = killer
 
-    def __init_subclass__(cls):
+    def __init_subclass__(cls) -> None:
         super().__init_subclass__()
         if "killer" not in cls.__dict__:
             cls.killer = cls.__name__.replace("_", " ")
@@ -183,10 +183,10 @@ class Rolestop(Ability):
             targets = tuple(actor for _ in range(self.target_count))
         target, *_ = targets
         max_blocks: int | None
-        if visit.ability_type is AbilityType.PASSIVE and isinstance(visit.ability, XShot.XShotPrototype):
-            uses_remaining = visit.ability.max_uses - actor.uses.get(
-                visit.ability, 0
-            )
+        if visit.ability_type is AbilityType.PASSIVE and isinstance(
+            visit.ability, XShot.XShotPrototype
+        ):
+            uses_remaining = visit.ability.max_uses - actor.uses.get(visit.ability, 0)
             max_blocks = (
                 min(self.limit, uses_remaining) if self.limit is not None else uses_remaining
             )
@@ -432,10 +432,10 @@ class Juggernaut(Role):
                 targets = tuple(actor for _ in range(self.target_count))
             target, *_ = targets
             max_upgrades: int | None = None
-            if visit.ability_type is AbilityType.PASSIVE and isinstance(visit.ability, XShot.XShotPrototype):
-                max_upgrades = visit.ability.max_uses - actor.uses.get(
-                    visit.ability, 0
-                )
+            if visit.ability_type is AbilityType.PASSIVE and isinstance(
+                visit.ability, XShot.XShotPrototype
+            ):
+                max_upgrades = visit.ability.max_uses - actor.uses.get(visit.ability, 0)
             successes: int = 0
             for visit in target.get_visits(game):
                 if "factional_kill" in visit.tags and visit.status == VisitStatus.PENDING:
@@ -653,6 +653,8 @@ class XShot(AbilityModifier):
         id: str | None = None,
         tags: frozenset[str] | None = None,
     ):
+        if id is None:
+            self.id = self._id
         super().__init__(id, tags)
         if max_uses is not None:
             self.max_uses = max_uses
@@ -681,7 +683,7 @@ class XShot(AbilityModifier):
         )
 
     @property
-    def id(self):
+    def _id(self) -> str:
         return f"{self.max_uses}-Shot"
 
     max_uses: int = 1
@@ -700,7 +702,10 @@ class Night_Specific(AbilityModifier):
 
     def modify_ability(self, ability: type[Ability]) -> type[Ability]:
         def check(
-            method_self, game: Game, actor: Player, targets: Sequence[Player] | None = None
+            method_self: Ability,
+            game: Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
         ) -> bool:
             return ability.check(method_self, game, actor, targets) and self.night_check(
                 game.day_no

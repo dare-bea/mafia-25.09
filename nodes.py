@@ -12,21 +12,21 @@ def nodes_in_cycles(edges: Iterable[tuple[Node, Node]]) -> set[Node]:
     Nodes can be any hashable type (int, str, ...).
     """
     # build adjacency and node set
-    graph: dict = defaultdict(list)
-    nodes: set = set()
+    graph: defaultdict[Node, list[Node]] = defaultdict(list)
+    nodes: set[Node] = set()
     for u, v in edges:
         graph[u].append(v)
         nodes.add(u)
         nodes.add(v)
 
-    index = 0
-    indices: dict = {}
-    lowlink: dict = {}
+    index: int = 0
+    indices: dict[Node, int] = {}
+    lowlink: dict[Node, int] = {}
     stack: list[Node] = []
-    onstack: set = set()
+    onstack: set[Node] = set()
     sccs: list[list[Node]] = []
 
-    def strongconnect(v):
+    def strongconnect(v: Node) -> None:
         nonlocal index
         indices[v] = index
         lowlink[v] = index
@@ -57,7 +57,7 @@ def nodes_in_cycles(edges: Iterable[tuple[Node, Node]]) -> set[Node]:
             strongconnect(v)
 
     # nodes in cycles: any SCC with size>1, or size==1 with a self-loop.
-    result = set()
+    result: set[Node] = set()
     for scc in sccs:
         if len(scc) > 1:
             result.update(scc)
