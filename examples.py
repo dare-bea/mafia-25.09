@@ -199,7 +199,7 @@ class Rolestop(Ability):
                 and "unstoppable" not in v.tags
                 and self.block_check(actor, target, v, visit=visit)
             ):
-                if self.block_visit(actor, target, v, visit=visit) == VisitStatus.SUCCESS:
+                if self.block_visit(actor, target, v, visit=visit) >= VisitStatus.SUCCESS:
                     successes += 1
                 if max_blocks is not None and max_blocks <= successes:
                     return successes
@@ -254,7 +254,7 @@ class Bodyguard(Role):
     """Protects a player from one kill, but dies if successful."""
 
     class Bodyguard(ProtectiveAbility):
-        def block_kill(
+        def block_visit(
             self, actor: Player, target: Player, kill_visit: Visit, *, visit: Visit
         ) -> VisitStatus:
             actor.kill(getattr(visit.ability, "killer", "Unknown"))
@@ -385,7 +385,7 @@ class Innocent_Child(Role):
 
 
 class Jailkeeper(Role):
-    """Protects and roleblocks a player simultaneously."""
+    """Protects a player from kills and roleblocks a player simultaneously."""
 
     class Jailkeeper(ProtectiveAbility):
         tags = frozenset({"protect", "roleblock"})
@@ -448,6 +448,7 @@ class Juggernaut(Role):
         def check(
             self, game: Game, actor: Player, targets: Sequence[Player] | None = None
         ) -> bool:
+            # Juggernaut can only target self.
             return (
                 (self.phase is None or self.phase == game.phase)
                 and actor.is_alive
