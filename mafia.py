@@ -5,6 +5,7 @@ Mafia game framework.
 from __future__ import annotations
 
 from collections.abc import Sequence, Iterator
+from types import EllipsisType
 from typing import Any, TypeVar, cast
 from enum import Enum, auto, IntEnum
 from dataclasses import InitVar, dataclass, field
@@ -188,7 +189,7 @@ class Alignment(ABC):
         passives: tuple[Ability, ...] | None = None,
         shared_actions: tuple[Ability, ...] | None = None,
         tags: frozenset[str] | None = None,
-        demonym: str | None | ellipsis = ...,
+        demonym: str | None | EllipsisType = ...,
         role_names: dict[str, str] | None = None,
     ):
         if id is not None:
@@ -258,7 +259,6 @@ class Faction(Alignment):
 
 
 RAA = TypeVar("RAA", bound=Ability | Role | Alignment)
-
 
 class Modifier:
     def __init__(
@@ -339,14 +339,13 @@ class AbilityModifier(Modifier, ABC):
         abilities = self.get_modified_abilities(cls)
         if cls_dict is None:
             cls_dict = {
-                "id": f"{self.id} {cls.id}",
                 "actions": tuple(abilities["actions"]),
                 "passives": tuple(abilities["passives"]),
                 "shared_actions": tuple(abilities["shared_actions"]),
                 "tags": cls.tags | self.tags,
             }
-            if issubclass(cls, Alignment) and "demonym" in cls.__dict__ and cls.demonym:
-                cls_dict["demonym"] = f"{self.id} {cls.demonym}"
+            if issubclass(cls, Role):
+                cls_dict["id"] = f"{cls.id} {self.id}"
         return type(
             f"{self!r}({cls.__name__})",
             (cls,),

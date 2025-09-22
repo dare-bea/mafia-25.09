@@ -2,8 +2,8 @@
 Simple Normal roles, abilities, and alignments.
 """
 
-from collections.abc import Sequence, Callable
-from typing import TypeVar
+from collections.abc import Sequence, Callable, Collection
+from typing import Any, TypeVar
 from abc import ABC, abstractmethod
 from mafia import (
     AbilityModifier,
@@ -255,10 +255,10 @@ class Bodyguard(Role):
 
     class Bodyguard(ProtectiveAbility):
         def block_visit(
-            self, actor: Player, target: Player, kill_visit: Visit, *, visit: Visit
+            self, actor: Player, target: Player, blocked_visit: Visit, *, visit: Visit
         ) -> VisitStatus:
             actor.kill(getattr(visit.ability, "killer", "Unknown"))
-            return super().block_visit(actor, target, kill_visit, visit=visit)
+            return super().block_visit(actor, target, blocked_visit, visit=visit)
 
         limit = 1
 
@@ -683,6 +683,7 @@ class XShot(AbilityModifier):
             ),
         )
 
+    id = "X-Shot"
     @property
     def _id(self) -> str:
         return f"{self.max_uses}-Shot"
@@ -691,6 +692,8 @@ class XShot(AbilityModifier):
 
 
 class Night_Specific(AbilityModifier):
+    """Can only use their abilities on specific nights."""
+    
     def __init__(
         self,
         id: str | None = None,
@@ -725,17 +728,44 @@ class Night_Specific(AbilityModifier):
         raise NotImplementedError
 
 
+class Night_X(Night_Specific):
+    """Can only use their abilities on nights listed."""
+    def __init__(
+        self,
+        nights: Collection[int] | None = None,
+        id: str | None = None,
+        tags: frozenset[str] | None = None,
+    ):
+        if nights is not None:
+            self.nights = frozenset(nights)
+        super().__init__(id, tags=tags)
+        if id is None:
+            self.id = self._id
+
+    nights: frozenset[int] = frozenset()
+
+    def night_check(self, day_no: int, /) -> bool:
+        return day_no in self.nights
+
+    id = "Night X"
+    @property
+    def _id(self) -> str:
+        return f"Night {','.join(str(n) for n in sorted(self.nights))}"
+
 class Novice(Night_Specific):
+    """Cannot use their abilities on the first night."""
     def night_check(self, day_no: int, /) -> bool:
         return day_no > 1
 
 
 class Odd_Night(Night_Specific):
+    """Can only use their abilities on odd nights."""
     def night_check(self, day_no: int, /) -> bool:
         return bool(day_no % 2)
 
 
 class Even_Night(Night_Specific):
+    """Can only use their abilities on even nights."""
     def night_check(self, day_no: int) -> bool:
         return not (day_no % 2)
 
@@ -747,7 +777,7 @@ class Town(Faction):
     """The uninformed majority."""
 
     tags = frozenset({"town"})
-    demonym: str = "{alignment}ie"
+    demonym = "{alignment}ie"
 
 
 class Mafia(Faction):
@@ -767,14 +797,27 @@ class Mafia(Faction):
 
     shared_actions = (Mafia_Factional_Kill(),)
     tags = frozenset({"mafia", "chat", "informed"})
-    demonym: str = "{alignment._demonym}"
+    demonym = "{alignment._demonym}"
     role_names: dict[str, str] = {
         "Vanilla": "{alignment} Goon",
     }
-
+    
     @property
     def _demonym(self) -> str:
         if self.id.endswith("fia"):
             return f"{self.id[:1]}oso"
         else:
             return f"{self} Goon"
+
+
+class Serial_Killer(Faction):
+    """Self-aligned third party."""
+
+    class Serial_Killer_Factional_Kill(Kill):
+        tags = frozenset({"kill", "factional_kill"})
+
+    actions = (Serial_Killer_Factional_Kill(),)
+    tags = frozenset({"third_party"})
+    role_names: dict[str, str] = {
+        "Vanilla": "{alignment}",
+    }
