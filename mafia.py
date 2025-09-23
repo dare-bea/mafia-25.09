@@ -55,32 +55,6 @@ def role_name(role: Role, alignment: Alignment) -> str:
     return f"{alignment} {role}"
 
 
-@dataclass(eq=False)
-class Visit:
-    def __post_init__(self) -> None:
-        if self.targets is None:
-            self.targets = tuple(self.actor for _ in range(self.ability.target_count))
-        self.tags = self.tags | self.ability.tags
-
-    def __str__(self) -> str:
-        targets = ", ".join(t.name for t in self.targets)
-        return f"{self.actor.name}: {self.ability_type.name} {self.ability.id} -> {targets} - {self.status}"
-
-    def __repr__(self) -> str:
-        targets = ", ".join(t.name for t in self.targets)
-        return f"Visit({self.actor.name}, [{targets}], {self.ability!r}, {self.ability_type!r}, {self.status!r}, {self.tags!r})"
-
-    actor: Player
-    targets: tuple[Player, ...] = None  # type: ignore[assignment]
-    ability: Ability = field(kw_only=True)
-    ability_type: AbilityType = field(kw_only=True)
-    status: int = VisitStatus.PENDING
-    tags: frozenset[str] = field(default_factory=frozenset, kw_only=True)
-
-    def perform(self, game: Game) -> int:
-        return self.ability.perform(game, self.actor, self.targets, visit=self)
-
-
 class Ability:
     def __init__(
         self,
@@ -110,6 +84,7 @@ class Ability:
         )
 
     id: str
+    player_inputs_types: tuple[type, ...] = ()  # Input types for player input validation.
     tags: frozenset[str] = frozenset()
 
     target_count: int = 1
@@ -129,7 +104,40 @@ class Ability:
         raise NotImplementedError
 
 
-class Role:    
+@dataclass(eq=False)
+class Visit:
+    def __post_init__(self, game: Game) -> None:
+        if self.game_phase is None or self.game_day_no is None:
+            self.game_phase = game.phase
+            self.game_day_no = game.day_no
+        if self.targets is None:
+            self.targets = tuple(self.actor for _ in range(self.ability.target_count))
+        self.tags = self.tags | self.ability.tags
+
+    def __str__(self) -> str:
+        targets = ", ".join(t.name for t in self.targets)
+        return f"{self.actor.name}: {self.ability_type.name} {self.ability.id} -> {targets} - {self.status}"
+
+    def __repr__(self) -> str:
+        targets = ", ".join(t.name for t in self.targets)
+        return f"Visit({self.actor.name}, [{targets}], {self.ability!r}, {self.ability_type!r}, {self.status!r}, {self.tags!r})"
+
+    actor: Player
+    targets: tuple[Player, ...] = None  # type: ignore[assignment]
+    ability: Ability = field(kw_only=True)
+    ability_type: AbilityType = field(kw_only=True)
+    game_phase: Phase = field(default=None, kw_only=True)  # type: ignore[assignment]
+    game_day_no: int = field(default=None, kw_only=True)  # type: ignore[assignment]
+    game: InitVar[Game] = field(default=None, kw_only=True)  # pyright: ignore[reportAssignmentType]
+    player_inputs: tuple[object, ...] = field(default=(), kw_only=True)
+    status: int = field(default=VisitStatus.PENDING, kw_only=True)
+    tags: frozenset[str] = field(default_factory=frozenset, kw_only=True)
+
+    def perform(self, game: Game) -> int:
+        return self.ability.perform(game, self.actor, self.targets, visit=self)
+
+
+class Role:
     def __init__(
         self,
         id: str | None = None,
@@ -182,7 +190,11 @@ class Role:
 
     modifiers: frozenset[str] = frozenset()
 
-    def is_role(self, role: Any) -> TypeGuard[Role | str | type[Role] | Modifier | type[Modifier] | Callable[..., type[Role]]]:
+    def is_role(
+        self, role: Any
+    ) -> TypeGuard[
+        Role | str | type[Role] | Modifier | type[Modifier] | Callable[..., type[Role]]
+    ]:
         if isinstance(role, str):
             return self.id == role or role in self.modifiers
         if isinstance(role, Role):
@@ -190,7 +202,9 @@ class Role:
         if isinstance(role, type) and issubclass(role, Role):
             return isinstance(self, role)
         if isinstance(role, Modifier):
-            return role.id in self.modifiers or any(isinstance(m, type(role)) for m in self.modifiers)
+            return role.id in self.modifiers or any(
+                isinstance(m, type(role)) for m in self.modifiers
+            )
         if isinstance(role, type) and issubclass(role, Modifier):
             return any(isinstance(m, role) for m in self.modifiers)
         if hasattr(role, "id"):
@@ -201,6 +215,7 @@ class Role:
             except TypeError:
                 pass
         return False
+
 
 class Alignment(ABC):
     def __init__(
@@ -280,6 +295,7 @@ class Faction(Alignment):
 
 
 RAA = TypeVar("RAA", bound=Ability | Role | Alignment)
+
 
 class Modifier:
     def __init__(

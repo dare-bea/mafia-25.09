@@ -6,9 +6,9 @@ from pprint import pprint
 
 class PrintResolver(examples.Resolver):
     def resolve_visit(self, game: m.Game, visit: m.Visit) -> int:
-        resolved_visits = set(v for v in game.visits if v.status is m.VisitStatus.PENDING) - {
-            visit
-        }
+        resolved_visits = set(
+            v for v in game.visits if v.status is m.VisitStatus.PENDING
+        ) - {visit}
 
         result = super().resolve_visit(game, visit)
 
@@ -49,46 +49,13 @@ def test_catastrophic_rule() -> None:
         print(f"  Shared Actions: {player.shared_actions}")
         print()
 
-    for player in game.players:
-        for ability in player.passives:
-            if ability.check(game, player):
-                visit = m.Visit(actor=player, ability=ability, ability_type=m.AbilityType.PASSIVE)
-                if ability.immediate:
-                    r.resolve_visit(game, visit)
-                else:
-                    game.visits.append(visit)
+    r.add_passives(game)
 
-    game.visits.append(
-        m.Visit(
-            actor=eve,
-            targets=(alice,),
-            ability=eve.shared_actions[0],
-            ability_type=m.AbilityType.SHARED_ACTION,
-        )
-    )
-    game.visits.append(
-        m.Visit(
-            actor=bob, targets=(eve,), ability=bob.actions[0], ability_type=m.AbilityType.ACTION
-        )
-    )
-    game.visits.append(
-        m.Visit(
-            actor=eve, targets=(bob,), ability=eve.actions[0], ability_type=m.AbilityType.ACTION
-        )
-    )
-    game.visits.append(
-        m.Visit(
-            actor=eve, targets=(alice,), ability=eve.actions[0], ability_type=m.AbilityType.ACTION
-        )
-    )
-    game.visits.append(
-        m.Visit(
-            actor=alice,
-            targets=(eve,),
-            ability=alice.actions[0],
-            ability_type=m.AbilityType.ACTION,
-        )
-    )
+    game.visits.append(r.make_visit(game, eve, (alice,), m.AbilityType.SHARED_ACTION, 0))
+    game.visits.append(r.make_visit(game, bob, (eve,), m.AbilityType.ACTION, 0))
+    game.visits.append(r.make_visit(game, eve, (bob,), m.AbilityType.ACTION, 0))
+    game.visits.append(r.make_visit(game, eve, (alice,), m.AbilityType.ACTION, 0))
+    game.visits.append(r.make_visit(game, alice, (eve,), m.AbilityType.ACTION, 0))
 
     r.resolve_game(game)
     print()
@@ -127,25 +94,11 @@ def test_xshot_role() -> None:
 
     if alice.actions[0].check(game, alice, (bob,)):
         print(f"{alice.name} is using {alice.actions[0].id} on {bob.name}.")
-        game.visits.append(
-            m.Visit(
-                actor=alice,
-                targets=(bob,),
-                ability=alice.actions[0],
-                ability_type=m.AbilityType.ACTION,
-            )
-        )
+        game.visits.append(r.make_visit(game, alice, (bob,), m.AbilityType.ACTION, 0))
     else:
         print(f"{alice.name} cannot use {alice.actions[0].id} on {bob.name}.")
         raise AssertionError("Expected check to succeed.")
-    game.visits.append(
-        m.Visit(
-            actor=eve,
-            targets=(bob,),
-            ability=eve.shared_actions[0],
-            ability_type=m.AbilityType.SHARED_ACTION,
-        )
-    )
+    game.visits.append(r.make_visit(game, eve, (bob,), m.AbilityType.SHARED_ACTION, 0))
     r.resolve_game(game)
     assert bob.is_alive, "Bob is dead, expected Bulletproof to protect."
     print()
@@ -153,25 +106,11 @@ def test_xshot_role() -> None:
     game.phase, game.day_no = m.Phase.NIGHT, 2
     if alice.actions[0].check(game, alice, (eve,)):
         print(f"{alice.name} is using {alice.actions[0].id} on {eve.name}.")
-        game.visits.append(
-            m.Visit(
-                actor=alice,
-                targets=(eve,),
-                ability=alice.actions[0],
-                ability_type=m.AbilityType.ACTION,
-            )
-        )
+        game.visits.append(r.make_visit(game, alice, (eve,), m.AbilityType.ACTION, 0))
         raise AssertionError("Expected check to fail.")
     else:
         print(f"{alice.name} cannot use {alice.actions[0].id} on {eve.name}.")
-    game.visits.append(
-        m.Visit(
-            actor=eve,
-            targets=(bob,),
-            ability=eve.shared_actions[0],
-            ability_type=m.AbilityType.SHARED_ACTION,
-        )
-    )
+    game.visits.append(r.make_visit(game, eve, (bob,), m.AbilityType.SHARED_ACTION, 0))
     r.resolve_game(game)
     print()
     pprint(game)
@@ -198,14 +137,8 @@ def test_protection() -> None:
         print()
 
     r.add_passives(game)
-    game.visits.append(
-        m.Visit(alice, (bob,), ability=alice.actions[0], ability_type=m.AbilityType.ACTION)
-    )
-    game.visits.append(
-        m.Visit(
-            eve, (bob,), ability=eve.shared_actions[0], ability_type=m.AbilityType.SHARED_ACTION
-        )
-    )
+    game.visits.append(r.make_visit(game, alice, (bob,), m.AbilityType.ACTION, 0))
+    game.visits.append(r.make_visit(game, eve, (bob,), m.AbilityType.SHARED_ACTION, 0))
 
     r.resolve_game(game)
     print()
@@ -234,25 +167,11 @@ def test_xshot_macho() -> None:
         print()
 
     r.add_passives(game)
-    game.visits.append(
-        m.Visit(alice, (bob,), ability=alice.actions[0], ability_type=m.AbilityType.ACTION)
-    )
-    game.visits.append(
-        m.Visit(alice, (carol,), ability=alice.actions[0], ability_type=m.AbilityType.ACTION)
-    )
-    game.visits.append(
-        m.Visit(alice, (carol,), ability=alice.actions[0], ability_type=m.AbilityType.ACTION)
-    )
-    game.visits.append(
-        m.Visit(
-            eve, (bob,), ability=eve.shared_actions[0], ability_type=m.AbilityType.SHARED_ACTION
-        )
-    )
-    game.visits.append(
-        m.Visit(
-            eve, (carol,), ability=eve.shared_actions[0], ability_type=m.AbilityType.SHARED_ACTION
-        )
-    )
+    game.visits.append(r.make_visit(game, alice, (bob,), m.AbilityType.ACTION, 0))
+    game.visits.append(r.make_visit(game, alice, (carol,), m.AbilityType.ACTION, 0))
+    game.visits.append(r.make_visit(game, alice, (carol,), m.AbilityType.ACTION, 0))
+    game.visits.append(r.make_visit(game, eve, (bob,), m.AbilityType.SHARED_ACTION, 0))
+    game.visits.append(r.make_visit(game, eve, (carol,), m.AbilityType.SHARED_ACTION, 0))
 
     r.resolve_game(game)
     print()
@@ -281,17 +200,9 @@ def test_tracker_roleblocker() -> None:
         print()
 
     r.add_passives(game)
-    game.visits.append(
-        m.Visit(alice, (eve,), ability=alice.actions[0], ability_type=m.AbilityType.ACTION)
-    )
-    game.visits.append(
-        m.Visit(bob, (eve,), ability=bob.actions[0], ability_type=m.AbilityType.ACTION)
-    )
-    game.visits.append(
-        m.Visit(
-            eve, (bob,), ability=eve.shared_actions[0], ability_type=m.AbilityType.SHARED_ACTION
-        )
-    )
+    game.visits.append(r.make_visit(game, alice, (eve,), m.AbilityType.ACTION, 0))
+    game.visits.append(r.make_visit(game, bob, (eve,), m.AbilityType.ACTION, 0))
+    game.visits.append(r.make_visit(game, eve, (bob,), m.AbilityType.SHARED_ACTION, 0))
 
     r.resolve_game(game)
     print()
@@ -320,17 +231,9 @@ def test_juggernaut() -> None:
         print()
 
     r.add_passives(game)
-    game.visits.append(
-        m.Visit(alice, (eve,), ability=alice.actions[0], ability_type=m.AbilityType.ACTION)
-    )
-    game.visits.append(
-        m.Visit(eve, (eve,), ability=eve.actions[0], ability_type=m.AbilityType.ACTION)
-    )
-    game.visits.append(
-        m.Visit(
-            eve, (bob,), ability=eve.shared_actions[0], ability_type=m.AbilityType.SHARED_ACTION
-        )
-    )
+    game.visits.append(r.make_visit(game, alice, (eve,), m.AbilityType.ACTION, 0))
+    game.visits.append(r.make_visit(game, eve, (eve,), m.AbilityType.ACTION, 0))
+    game.visits.append(r.make_visit(game, eve, (bob,), m.AbilityType.SHARED_ACTION, 0))
 
     r.resolve_game(game)
     print()
@@ -353,7 +256,7 @@ TESTS: dict[str, Callable[[], None]] = {
 
 def main() -> None:
     from os import makedirs
-    from sys import stderr
+    from sys import stderr, argv
     from contextlib import redirect_stdout
     from pathlib import Path
     from traceback import print_exception
@@ -383,6 +286,9 @@ def main() -> None:
 
     print(f"{successes}/{len(TESTS)} tests succeeded! ({successes / len(TESTS):.1%})")
     print()
+
+    if "--no-mypy" in argv or "-M" in argv:
+        return
 
     try:
         import mypy.api
