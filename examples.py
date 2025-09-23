@@ -592,7 +592,8 @@ class Neighborizer(Role):
     def player_init(self, game: Game, player: Player) -> None:
         chat_id = f"{self.id}:{player.name}"
         game.chats[chat_id] = Chat(participants={player})
-        game.chats[chat_id].send(self.id, f"{player.name} is a {player.role.id}.")
+        game.chats[chat_id].send(self.id, f"{player.name} is a {self.id}.")
+        # Hide full identity of Neighborizer.
 
     tags = frozenset({"chat"})
     actions = (Neighborizer(),)
@@ -1117,7 +1118,7 @@ class Messenger(Role):
 
 class Motion_Detector(Role):
     """Checks if a player targeted someone or was targeted by someone.
-    Recieves the same result from both checks.
+    Receives the same result from both checks.
     """
 
     class Motion_Detector(InvestigativeAbility):
@@ -1171,6 +1172,21 @@ class Motion_Detector(Role):
                 return f"{target.name} did not target anyone and was not targeted by anyone."
 
     actions = (Motion_Detector(),)
+
+
+class Neighbor(Role):
+    """Can chat with other Neighbors."""
+
+    def player_init(self, game: Game, player: Player) -> None:
+        chat_id = f"{self.id}"
+        if chat_id not in game.chats:
+            game.chats[chat_id] = Chat(participants={player})
+        else:
+            game.chats[chat_id].participants.add(player)
+        game.chats[chat_id].send(self.id, f"{player.name} is a {self.id}.")
+        # Hide full identity of Neighbors.
+
+    tags = frozenset({"chat"})
 
 
 # ROLE MODIFIERS #
