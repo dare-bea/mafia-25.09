@@ -95,7 +95,7 @@ class Ability:
         return (
             (self.phase is None or game.phase == self.phase)
             and actor.is_alive
-            and (targets is None or actor not in targets)
+            and (targets is None or (all(t.is_alive for t in targets) and actor not in targets))
         )
 
     def perform(

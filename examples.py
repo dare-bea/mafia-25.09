@@ -3,6 +3,7 @@ Simple Normal roles, abilities, and alignments.
 """
 
 from collections.abc import Sequence, Callable, Collection
+from itertools import product
 from typing import Any, TypeGuard, TypeVar
 from abc import ABC, abstractmethod
 from mafia import (
@@ -41,6 +42,17 @@ def visit_is_visible(visit: Visit, game: Game) -> bool:
         and not visit.is_self_target()
         and visit.is_active_time(game)
     )
+
+def ability_has_valid_targets(ability: Ability, game: Game, actor: Player, is_passive: bool = False) -> bool:
+    """Check if an ability has any valid targets."""
+    if is_passive:
+        return ability.check(game, actor)
+    if ability.target_count == 0:
+        return ability.check(game, actor, ())
+    for targets in product(game.players, repeat=ability.target_count):
+        if ability.check(game, actor, targets):
+            return True
+    return False
 
 
 class Resolver:
@@ -523,7 +535,7 @@ class Juggernaut(Role):
             return (
                 (self.phase is None or self.phase == game.phase)
                 and actor.is_alive
-                and (targets is None or actor in targets)
+                and (targets is None or (all(t.is_alive for t in targets) and actor in targets))
             )
 
     actions = (Juggernaut(),)
@@ -822,7 +834,7 @@ class Commuter(Role):
             return (
                 (self.phase is None or self.phase == game.phase)
                 and actor.is_alive
-                and (targets is None or actor in targets)
+                and (targets is None or (all(t.is_alive for t in targets) and actor in targets))
             )
 
     actions = (Commuter(),)
@@ -1095,6 +1107,7 @@ class Messenger(Role):
     """Sends a custom message to a player."""
 
     class Messenger(Ability):
+        tags = frozenset({"message"})
         player_inputs_types = (str,)
 
         def perform(
@@ -1212,10 +1225,258 @@ class Ninja(Role):
             return (
                 (self.phase is None or self.phase == game.phase)
                 and actor.is_alive
-                and (targets is None or actor in targets)
+                and (targets is None or all(t.is_alive for t in targets) and actor in targets)
             )
 
     actions = (Ninja(),)
+
+
+class PT_Cop(Role):
+    """Check if a player is in a Private Chat."""
+
+    class PT_Cop(InvestigativeAbility):
+        tags = frozenset({"investigate", "gun"})
+
+        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+            if any(
+                id != "global" for id, chat in game.chats.items() if target in chat.participants
+            ):
+                return f"{target.name} is in a Private Chat!"
+            else:
+                return f"{target.name} is not in a Private Chat."
+
+    actions = (PT_Cop(),)
+
+
+class Reporter(Role):
+    """Learns if a player targeted someone this night."""
+
+    class Reporter(InvestigativeAbility):
+        tags = frozenset({"investigate", "gun"})
+
+        def perform(
+            self,
+            game: Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
+            *,
+            visit: Visit,
+        ) -> VisitStatus:
+            if targets is None:
+                targets = tuple(actor for _ in range(self.target_count))
+            target, *_ = targets
+            # Wait if target has a pending roleblock.
+            if any("roleblock" in v.tags for v in target.get_visitors(game) if v.is_active(game)):
+                return VisitStatus.PENDING
+            return super().perform(game, actor, targets, visit=visit)
+
+        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+            if any(visit_is_visible(v, game) and v is not visit for v in target.get_visits(game)):
+                return f"{target.name} targeted someone this night!"
+            else:
+                return f"{target.name} did not target anyone this night."
+
+    actions = (Reporter(),)
+
+
+class Rolestopper(Role):
+    """Blocks actions used on a player."""
+
+    Rolestopper = Rolestop
+    actions = (Rolestopper(),)
+
+
+class Role_Watcher(Role):
+    """Checks a player to learn all roles that targeted them."""
+
+    class Role_Watcher(InvestigativeAbility):
+        tags = frozenset({"investigate", "gun"})
+
+        def perform(
+            self,
+            game: Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
+            *,
+            visit: Visit,
+        ) -> VisitStatus:
+            if targets is None:
+                targets = tuple(actor for _ in range(self.target_count))
+            target, *_ = targets
+            # Check if target's visitors have a pending roleblock.
+            if any(
+                "roleblock" in vv.tags
+                for v in target.get_visitors(game)
+                if v.is_active(game)
+                for vv in v.actor.get_visitors(game)
+                if vv.is_active(game)
+            ):
+                return VisitStatus.PENDING
+            return super().perform(game, actor, targets, visit=visit)
+
+        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+            roles: list[str] = []
+            for v in target.get_visitors(game):
+                if visit_is_visible(v, game) and v is not visit:
+                    roles.append(v.actor.role.id)
+            if roles:
+                return f"{target.name} was targeted by the following roles: {', '.join(roles)}."
+            else:
+                return f"{target.name} was not targeted by anyone."
+
+    actions = (Role_Watcher(),)
+
+
+class Shield(Role):
+    """If the target performs a kill, the actor dies instead of the intended target."""
+
+    class Shield(ProtectiveAbility):
+        def perform(
+            self,
+            game: Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
+            *,
+            visit: Visit,
+        ) -> int:
+            if targets is None:
+                targets = tuple(actor for _ in range(self.target_count))
+            target, *_ = targets
+            # Check if a visitor to the target has a pending juggernaut.
+            if any("juggernaut" in v.tags for v in target.get_visitors(game) if v.is_active(game)):
+                return VisitStatus.PENDING
+            max_blocks: int | None
+            if visit.ability_type is AbilityType.PASSIVE and isinstance(
+                visit.ability, XShot.XShotPrototype
+            ):
+                uses_remaining = visit.ability.max_uses - actor.uses.get(visit.ability, 0)
+                max_blocks = (
+                    min(self.limit, uses_remaining) if self.limit is not None else uses_remaining
+                )
+            else:
+                max_blocks = self.limit
+            successes: int = 0
+            for v in target.get_visits(game):
+                if (
+                    v.is_active(game)
+                    and "unstoppable" not in v.tags
+                    and self.block_check(actor, target, v, visit=visit)
+                ):
+                    if self.block_visit(actor, target, v, visit=visit) >= VisitStatus.SUCCESS:
+                        successes += 1
+                    if max_blocks is not None and max_blocks <= successes:
+                        if successes:
+                            actor.kill(self.id)
+                        return successes
+            if successes:
+                actor.kill(self.id)
+            return successes
+
+        limit: int | None = None
+
+    actions = (Shield(),)
+
+
+class Traffic_Analyst(Role):
+    """Check if a player can communicate with other players privately.
+    This does not include chats with only 1 remaining living player.
+    """
+
+    class Traffic_Analyst(InvestigativeAbility):
+        tags = frozenset({"investigate", "gun"})
+
+        def perform(
+            self,
+            game: Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
+            *,
+            visit: Visit,
+        ) -> VisitStatus:
+            # Wait if kill abilities are still pending, might affect result.
+            for v in game.visits:
+                if v.is_active(game) and "kill" in v.tags:
+                    return VisitStatus.PENDING
+            return super().perform(game, actor, targets, visit=visit)
+
+        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+            has_private_chat = any(
+                id != "global" and len({p for p in chat.participants if p.is_alive}) > 1
+                for id, chat in game.chats.items()
+                if target in chat.participants
+            )
+            # Check if "message" is an ability tag (for Messenger)
+            can_message_privately = any(
+                "message" in a.tags
+                for a in [*target.actions, *target.shared_actions]
+                # Check if ability is actually usable (i.e. blocked by X-Shot)
+                if ability_has_valid_targets(a, game, target)
+            ) or any(
+                "message" in p.tags
+                for p in target.passives
+                # Check if ability is actually usable (i.e. blocked by X-Shot)
+                if ability_has_valid_targets(p, game, target, True)
+            )
+            if has_private_chat or can_message_privately:
+                return f"{target.name} can communicate with other players privately!"
+            else:
+                return f"{target.name} cannot communicate with other players privately."
+
+
+class Universal_Backup(Role):
+    """Inherits the role of the first allied Non-Vanilla player to die."""
+
+    class Universal_Backup(Ability):
+        phase = None
+        immediate = True
+        target_count = 0
+
+        def perform(
+            self,
+            game: Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
+            *,
+            visit: Visit,
+        ) -> int:
+            dead_players = sorted(
+                (p for p in game.players if p.death_causes and p.alignment is actor.alignment),
+                key=lambda p: ("Mafia Factional Kill" in p.death_causes),
+            )
+            if not dead_players:
+                return VisitStatus.FAILURE
+            # Remove this ability.
+            try:
+                actor.actions.remove(self)
+            except ValueError:
+                try:
+                    actor.passives.remove(self)
+                except ValueError:
+                    try:
+                        actor.shared_actions.remove(self)
+                    except ValueError:
+                        pass
+            # Gain abilities of dead player's role:
+            dead_player = dead_players[0]
+            actor.actions.extend(dead_player.role.actions)
+            actor.passives.extend(dead_player.role.passives)
+            actor.shared_actions.extend(dead_player.role.shared_actions)
+            for action in dead_player.role.actions:
+                actor.uses[action] = actor.uses.get(action, 0) + dead_player.uses.get(action, 0)
+            for passive in dead_player.role.passives:
+                actor.uses[passive] = actor.uses.get(passive, 0) + dead_player.uses.get(
+                    passive, 0
+                )
+            for shared_action in dead_player.role.shared_actions:
+                actor.uses[shared_action] = actor.uses.get(
+                    shared_action, 0
+                ) + dead_player.uses.get(shared_action, 0)
+            return VisitStatus.SUCCESS
+        
+        def check(self, game: Game, actor: Player, targets: Sequence[Player] | None = None) -> bool:
+            return (self.phase is None or game.phase == self.phase) and actor.is_alive
+        
+    passives = (Universal_Backup(),)
 
 
 # ROLE MODIFIERS #
