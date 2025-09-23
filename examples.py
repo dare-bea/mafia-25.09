@@ -11,7 +11,6 @@ from mafia import (
     Alignment,
     Chat,
     Faction,
-    Modifier,
     Role,
     Ability,
     Game,
@@ -55,7 +54,7 @@ class Resolver:
             "commute" in v.tags
             for t in visit.targets
             for v in t.get_visitors(game)
-            if v.status == VisitStatus.PENDING
+            if v.is_active(game)
         ):
             return VisitStatus.PENDING
         # Perform if the visit is unstoppable.
@@ -65,7 +64,7 @@ class Resolver:
         if visit.ability_type is not AbilityType.PASSIVE and any(
             "roleblock" in v.tags
             for v in visit.actor.get_visitors(game)
-            if v.status == VisitStatus.PENDING
+            if v.is_active(game)
         ):
             return VisitStatus.PENDING
         # Wait if the target has a pending rolestop.
@@ -73,7 +72,7 @@ class Resolver:
             "rolestop" in v.tags
             for t in visit.targets
             for v in t.get_visitors(game)
-            if v.status == VisitStatus.PENDING
+            if v.is_active(game)
         ):
             return VisitStatus.PENDING
         # Wait if the target has a pending juggernaut (and the visit roleblocks).
@@ -81,7 +80,7 @@ class Resolver:
             "juggernaut" in v.tags
             for t in visit.targets
             for v in t.get_visitors(game)
-            if v.status == VisitStatus.PENDING
+            if v.is_active(game)
         ):
             return VisitStatus.PENDING
         # Perform the visit.
@@ -92,7 +91,7 @@ class Resolver:
         for visit in game.visits:
             if (
                 visit.ability_type is not AbilityType.PASSIVE
-                and visit.status == VisitStatus.PENDING
+                and visit.is_active(game)
             ):
                 visit.actor.uses.setdefault(visit.ability, 0)
                 visit.actor.uses[visit.ability] += 1
@@ -110,7 +109,7 @@ class Resolver:
                 ),
                 reverse=True,
             ):
-                if visit.status != VisitStatus.PENDING:
+                if not visit.is_active(game):
                     continue
                 result = self.resolve_visit(game, visit)
                 if result == VisitStatus.PENDING:
@@ -128,7 +127,7 @@ class Resolver:
         # Check for mutual roleblocks and invoke the Catastrophic Rule.
         roleblocking_visits: list[tuple[Player, Player]] = []
         for visit in game.visits:
-            if visit.status == VisitStatus.PENDING and "roleblock" in visit.tags:
+            if visit.is_active(game) and "roleblock" in visit.tags:
                 roleblocking_visits.extend((visit.actor, t) for t in visit.targets)
         catastrophic_rule_players = nodes_in_cycles(roleblocking_visits)
         for player in catastrophic_rule_players:
@@ -207,7 +206,7 @@ class Kill(Ability):
         if "unstoppable" not in visit.tags and any(
             "protect" in v.tags
             for v in target.get_visitors(game)
-            if v.status == VisitStatus.PENDING
+            if v.is_active(game)
         ):
             return VisitStatus.PENDING
         target.kill(self.killer)
@@ -248,9 +247,9 @@ class Rolestop(Ability):
         if any(
             "juggernaut" in v.tags
             for t in target.get_visitors(game)
-            if t.status == VisitStatus.PENDING
+            if t.is_active(game)
             for v in t.actor.get_visitors(game)
-            if v.status == VisitStatus.PENDING
+            if v.is_active(game)
         ):
             return VisitStatus.PENDING
         max_blocks: int | None
@@ -266,7 +265,7 @@ class Rolestop(Ability):
         successes: int = 0
         for v in target.get_visitors(game):
             if (
-                v.status == VisitStatus.PENDING
+                v.is_active(game)
                 and "unstoppable" not in v.tags
                 and self.block_check(actor, target, v, visit=visit)
             ):
@@ -300,7 +299,7 @@ class ProtectiveAbility(Rolestop):
             targets = tuple(actor for _ in range(self.target_count))
         target, *_ = targets
         if any(
-            "macho" in v.tags for v in target.get_visitors(game) if v.status == VisitStatus.PENDING
+            "macho" in v.tags for v in target.get_visitors(game) if v.is_active(game)
         ):
             return VisitStatus.PENDING
         return super().perform(game, actor, targets, visit=visit)
@@ -509,7 +508,7 @@ class Juggernaut(Role):
                 max_upgrades = visit.ability.max_uses - actor.uses.get(visit.ability, 0)
             successes: int = 0
             for v in target.get_visits(game):
-                if "factional_kill" in v.tags and v.status == VisitStatus.PENDING:
+                if "factional_kill" in v.tags and v.is_active(game):
                     v.tags |= frozenset({"unstoppable"})
                     successes += 1
                     if max_upgrades is not None and max_upgrades <= successes:
@@ -648,16 +647,29 @@ class Tracker(Role):
     class Tracker(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
+        def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> VisitStatus:
+            if targets is None:
+                targets = tuple(actor for _ in range(self.target_count))
+            target, *_ = targets
+            # Wait if target has a pending roleblock.
+            if any(
+                "roleblock" in v.tags
+                for v in target.get_visitors(game)
+                if v.is_active(game)
+            ):
+                return VisitStatus.PENDING
+            return super().perform(game, actor, targets, visit=visit)
+
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
             visits: list[Player] = []
             for v in target.get_visits(game):
                 if v.ability_type is not AbilityType.PASSIVE and all(
                     tag not in v.tags for tag in {"hidden", "roleblocked"}
-                ):
+                ) and v is not visit and v.is_active(game):
                     visits.extend(v.targets)
 
             if visits:
-                return f"{target.name} targeted {', '.join(p.name for p in visits)}."
+                return f"{target.name} targeted {', '.join(p.name for p in visits)}!"
             else:
                 return f"{target.name} did not target anyone."
 
@@ -694,12 +706,27 @@ class Watcher(Role):
     class Watcher(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
+        def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> VisitStatus:
+            if targets is None:
+                targets = tuple(actor for _ in range(self.target_count))
+            target, *_ = targets
+            # Check if target's visitors have a pending roleblock.
+            if any(
+                "roleblock" in vv.tags
+                for v in target.get_visitors(game)
+                if v.is_active(game)
+                for vv in v.actor.get_visitors(game)
+                if vv.is_active(game)
+            ):
+                return VisitStatus.PENDING
+            return super().perform(game, actor, targets, visit=visit)
+
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
             visits: list[Player] = []
             for v in target.get_visitors(game):
                 if v.ability_type is not AbilityType.PASSIVE and all(
                     tag not in v.tags for tag in {"hidden", "roleblocked"}
-                ):
+                ) and v is not visit and v.is_active(game):
                     visits.append(v.actor)
             if visits:
                 return f"{target.name} was targeted by {', '.join(p.name for p in visits)}."
@@ -772,11 +799,11 @@ class Commuter(Role):
             target, *_ = targets
             success = VisitStatus.FAILURE
             for v in target.get_visitors(game):
-                if v.status == VisitStatus.PENDING:
+                if v.is_active(game):
                     v.status = VisitStatus.FAILURE
                     success = VisitStatus.SUCCESS
             for v in target.get_visits(game):
-                if v is not visit and v.status == VisitStatus.PENDING:
+                if v is not visit and v.is_active(game):
                     v.status = VisitStatus.FAILURE
             return success
 
@@ -938,7 +965,7 @@ class Hider(Role):
                 if any(
                     "kill" in v.tags
                     for v in target.get_visitors(game)
-                    if v.status == VisitStatus.PENDING
+                    if v.is_active(game)
                     and v.ability_type is not AbilityType.PASSIVE
                 ):
                     return VisitStatus.PENDING
@@ -1079,6 +1106,62 @@ class Messenger(Role):
             target.private_messages.send(self.id, visit.player_inputs[0])
             return VisitStatus.SUCCESS
 
+    actions = (Messenger(),)
+
+
+class Motion_Detector(Role):
+    """Checks if a player targeted someone or was targeted by someone.
+    Recieves the same result from both checks.
+    """
+
+    class Motion_Detector(InvestigativeAbility):
+        tags = frozenset({"investigate", "gun"})
+
+        def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> VisitStatus:
+            if targets is None:
+                targets = tuple(actor for _ in range(self.target_count))
+            target, *_ = targets
+            # Wait if target has a pending roleblock.
+            if any(
+                "roleblock" in v.tags
+                for v in target.get_visitors(game)
+                if v.is_active(game)
+            ):
+                return VisitStatus.PENDING
+            # Wait if target's visitors have a pending roleblock.
+            if any(
+                "roleblock" in vv.tags
+                for v in target.get_visitors(game)
+                if v.is_active(game)
+                for vv in v.actor.get_visitors(game)
+                if vv.is_active(game)
+            ):
+                return VisitStatus.PENDING
+            return super().perform(game, actor, targets, visit=visit)
+
+        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+            # Check if target visited someone.
+            visited = any(
+                v.ability_type is not AbilityType.PASSIVE
+                and all(tag not in v.tags for tag in {"hidden", "roleblocked"})
+                and v is not visit
+                and v.is_active(game)
+                for v in target.get_visits(game)
+            )
+            # Check if target was visited by someone.
+            was_visited = any(
+                v.ability_type is not AbilityType.PASSIVE
+                and all(tag not in v.tags for tag in {"hidden", "roleblocked"})
+                and v is not visit
+                and v.is_active(game)
+                for v in target.get_visitors(game)
+            )
+            if visited or was_visited:
+                return f"{target.name} targeted someone or was targeted by someone."
+            else:
+                return f"{target.name} did not target anyone and was not targeted by anyone."
+        
+    actions = (Motion_Detector(),)
 
 # ROLE MODIFIERS #
 

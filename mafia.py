@@ -106,10 +106,12 @@ class Ability:
 
 @dataclass(eq=False)
 class Visit:
-    def __post_init__(self, game: Game) -> None:
-        if self.game_phase is None or self.game_day_no is None:
-            self.game_phase = game.phase
-            self.game_day_no = game.day_no
+    def __post_init__(self, game: Game | None) -> None:
+        if self.phase is None or self.day_no is None:
+            if game is None:
+                raise ValueError("game must be provided if phase or day_no is None")
+            self.phase = game.phase
+            self.day_no = game.day_no
         if self.targets is None:
             self.targets = tuple(self.actor for _ in range(self.ability.target_count))
         self.tags = self.tags | self.ability.tags
@@ -126,15 +128,18 @@ class Visit:
     targets: tuple[Player, ...] = None  # type: ignore[assignment]
     ability: Ability = field(kw_only=True)
     ability_type: AbilityType = field(kw_only=True)
-    game_phase: Phase = field(default=None, kw_only=True)  # type: ignore[assignment]
-    game_day_no: int = field(default=None, kw_only=True)  # type: ignore[assignment]
-    game: InitVar[Game] = field(default=None, kw_only=True)  # pyright: ignore[reportAssignmentType]
+    phase: Phase = field(default=None, kw_only=True)  # type: ignore[assignment]
+    day_no: int = field(default=None, kw_only=True)  # type: ignore[assignment]
+    game: InitVar[Game | None] = field(default=None, kw_only=True)
     player_inputs: tuple[object, ...] = field(default=(), kw_only=True)
     status: int = field(default=VisitStatus.PENDING, kw_only=True)
     tags: frozenset[str] = field(default_factory=frozenset, kw_only=True)
 
     def perform(self, game: Game) -> int:
         return self.ability.perform(game, self.actor, self.targets, visit=self)
+
+    def is_active(self, game: Game) -> bool:
+        return self.phase == game.phase and self.day_no == game.day_no and self.status == VisitStatus.PENDING
 
 
 class Role:
