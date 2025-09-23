@@ -139,7 +139,11 @@ class Visit:
         return self.ability.perform(game, self.actor, self.targets, visit=self)
 
     def is_active(self, game: Game) -> bool:
-        return self.phase == game.phase and self.day_no == game.day_no and self.status == VisitStatus.PENDING
+        return (
+            self.phase == game.phase
+            and self.day_no == game.day_no
+            and self.status == VisitStatus.PENDING
+        )
 
 
 class Role:

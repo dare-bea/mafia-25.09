@@ -62,9 +62,7 @@ class Resolver:
             return self.do_visit(game, visit)
         # Wait if the actor has a pending roleblock.
         if visit.ability_type is not AbilityType.PASSIVE and any(
-            "roleblock" in v.tags
-            for v in visit.actor.get_visitors(game)
-            if v.is_active(game)
+            "roleblock" in v.tags for v in visit.actor.get_visitors(game) if v.is_active(game)
         ):
             return VisitStatus.PENDING
         # Wait if the target has a pending rolestop.
@@ -89,10 +87,7 @@ class Resolver:
     def resolve_game(self, game: Game) -> None:
         """Resolve all visits in the game."""
         for visit in game.visits:
-            if (
-                visit.ability_type is not AbilityType.PASSIVE
-                and visit.is_active(game)
-            ):
+            if visit.ability_type is not AbilityType.PASSIVE and visit.is_active(game):
                 visit.actor.uses.setdefault(visit.ability, 0)
                 visit.actor.uses[visit.ability] += 1
             if visit.ability.immediate:
@@ -105,7 +100,7 @@ class Resolver:
                 game.visits,
                 key=lambda v: (
                     "simultaneous" in v.tags,  # Prioritize simultaneous visits.
-                    "unstoppable" in v.tags,   # Prioritize unstoppable visits.
+                    "unstoppable" in v.tags,  # Prioritize unstoppable visits.
                 ),
                 reverse=True,
             ):
@@ -204,9 +199,7 @@ class Kill(Ability):
             targets = tuple(actor for _ in range(self.target_count))
         target, *_ = targets
         if "unstoppable" not in visit.tags and any(
-            "protect" in v.tags
-            for v in target.get_visitors(game)
-            if v.is_active(game)
+            "protect" in v.tags for v in target.get_visitors(game) if v.is_active(game)
         ):
             return VisitStatus.PENDING
         target.kill(self.killer)
@@ -298,9 +291,7 @@ class ProtectiveAbility(Rolestop):
         if targets is None:
             targets = tuple(actor for _ in range(self.target_count))
         target, *_ = targets
-        if any(
-            "macho" in v.tags for v in target.get_visitors(game) if v.is_active(game)
-        ):
+        if any("macho" in v.tags for v in target.get_visitors(game) if v.is_active(game)):
             return VisitStatus.PENDING
         return super().perform(game, actor, targets, visit=visit)
 
@@ -647,25 +638,31 @@ class Tracker(Role):
     class Tracker(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
-        def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> VisitStatus:
+        def perform(
+            self,
+            game: Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
+            *,
+            visit: Visit,
+        ) -> VisitStatus:
             if targets is None:
                 targets = tuple(actor for _ in range(self.target_count))
             target, *_ = targets
             # Wait if target has a pending roleblock.
-            if any(
-                "roleblock" in v.tags
-                for v in target.get_visitors(game)
-                if v.is_active(game)
-            ):
+            if any("roleblock" in v.tags for v in target.get_visitors(game) if v.is_active(game)):
                 return VisitStatus.PENDING
             return super().perform(game, actor, targets, visit=visit)
 
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
             visits: list[Player] = []
             for v in target.get_visits(game):
-                if v.ability_type is not AbilityType.PASSIVE and all(
-                    tag not in v.tags for tag in {"hidden", "roleblocked"}
-                ) and v is not visit and v.is_active(game):
+                if (
+                    v.ability_type is not AbilityType.PASSIVE
+                    and all(tag not in v.tags for tag in {"hidden", "roleblocked"})
+                    and v is not visit
+                    and v.is_active(game)
+                ):
                     visits.extend(v.targets)
 
             if visits:
@@ -706,7 +703,14 @@ class Watcher(Role):
     class Watcher(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
-        def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> VisitStatus:
+        def perform(
+            self,
+            game: Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
+            *,
+            visit: Visit,
+        ) -> VisitStatus:
             if targets is None:
                 targets = tuple(actor for _ in range(self.target_count))
             target, *_ = targets
@@ -724,9 +728,12 @@ class Watcher(Role):
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
             visits: list[Player] = []
             for v in target.get_visitors(game):
-                if v.ability_type is not AbilityType.PASSIVE and all(
-                    tag not in v.tags for tag in {"hidden", "roleblocked"}
-                ) and v is not visit and v.is_active(game):
+                if (
+                    v.ability_type is not AbilityType.PASSIVE
+                    and all(tag not in v.tags for tag in {"hidden", "roleblocked"})
+                    and v is not visit
+                    and v.is_active(game)
+                ):
                     visits.append(v.actor)
             if visits:
                 return f"{target.name} was targeted by {', '.join(p.name for p in visits)}."
@@ -965,8 +972,7 @@ class Hider(Role):
                 if any(
                     "kill" in v.tags
                     for v in target.get_visitors(game)
-                    if v.is_active(game)
-                    and v.ability_type is not AbilityType.PASSIVE
+                    if v.is_active(game) and v.ability_type is not AbilityType.PASSIVE
                 ):
                     return VisitStatus.PENDING
                 return VisitStatus.SUCCESS
@@ -1117,16 +1123,19 @@ class Motion_Detector(Role):
     class Motion_Detector(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
-        def perform(self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit) -> VisitStatus:
+        def perform(
+            self,
+            game: Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
+            *,
+            visit: Visit,
+        ) -> VisitStatus:
             if targets is None:
                 targets = tuple(actor for _ in range(self.target_count))
             target, *_ = targets
             # Wait if target has a pending roleblock.
-            if any(
-                "roleblock" in v.tags
-                for v in target.get_visitors(game)
-                if v.is_active(game)
-            ):
+            if any("roleblock" in v.tags for v in target.get_visitors(game) if v.is_active(game)):
                 return VisitStatus.PENDING
             # Wait if target's visitors have a pending roleblock.
             if any(
@@ -1160,8 +1169,9 @@ class Motion_Detector(Role):
                 return f"{target.name} targeted someone or was targeted by someone."
             else:
                 return f"{target.name} did not target anyone and was not targeted by anyone."
-        
+
     actions = (Motion_Detector(),)
+
 
 # ROLE MODIFIERS #
 

@@ -6,9 +6,9 @@ from pprint import pprint
 
 class PrintResolver(examples.Resolver):
     def resolve_visit(self, game: m.Game, visit: m.Visit) -> int:
-        resolved_visits = set(
-            v for v in game.visits if v.status is m.VisitStatus.PENDING
-        ) - {visit}
+        resolved_visits = set(v for v in game.visits if v.status is m.VisitStatus.PENDING) - {
+            visit
+        }
 
         result = super().resolve_visit(game, visit)
 
