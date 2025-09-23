@@ -33,6 +33,16 @@ def roleblock_player(game: Game, player: Player) -> VisitStatus:
     return success
 
 
+def visit_is_visible(visit: Visit, game: Game) -> bool:
+    return (
+        visit.ability_type is not AbilityType.PASSIVE
+        and "hidden" not in visit.tags
+        and "roleblocked" not in visit.tags
+        and not visit.is_self_target()
+        and visit.is_active_time(game)
+    )
+
+
 class Resolver:
     """Resolves visits in a game."""
 
@@ -658,12 +668,7 @@ class Tracker(Role):
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
             visits: list[Player] = []
             for v in target.get_visits(game):
-                if (
-                    v.ability_type is not AbilityType.PASSIVE
-                    and all(tag not in v.tags for tag in {"hidden", "roleblocked"})
-                    and v is not visit
-                    and v.is_active(game)
-                ):
+                if visit_is_visible(v, game) and v is not visit:
                     visits.extend(v.targets)
 
             if visits:
@@ -729,12 +734,7 @@ class Watcher(Role):
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
             visits: list[Player] = []
             for v in target.get_visitors(game):
-                if (
-                    v.ability_type is not AbilityType.PASSIVE
-                    and all(tag not in v.tags for tag in {"hidden", "roleblocked"})
-                    and v is not visit
-                    and v.is_active(game)
-                ):
+                if visit_is_visible(v, game) and v is not visit:
                     visits.append(v.actor)
             if visits:
                 return f"{target.name} was targeted by {', '.join(p.name for p in visits)}."
@@ -1152,19 +1152,11 @@ class Motion_Detector(Role):
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
             # Check if target visited someone.
             visited = any(
-                v.ability_type is not AbilityType.PASSIVE
-                and all(tag not in v.tags for tag in {"hidden", "roleblocked"})
-                and v is not visit
-                and v.is_active(game)
-                for v in target.get_visits(game)
+                visit_is_visible(v, game) and v is not visit for v in target.get_visits(game)
             )
             # Check if target was visited by someone.
             was_visited = any(
-                v.ability_type is not AbilityType.PASSIVE
-                and all(tag not in v.tags for tag in {"hidden", "roleblocked"})
-                and v is not visit
-                and v.is_active(game)
-                for v in target.get_visitors(game)
+                visit_is_visible(v, game) and v is not visit for v in target.get_visitors(game)
             )
             if visited or was_visited:
                 return f"{target.name} targeted someone or was targeted by someone."
@@ -1187,6 +1179,43 @@ class Neighbor(Role):
         # Hide full identity of Neighbors.
 
     tags = frozenset({"chat"})
+
+
+class Ninja(Role):
+    """If the actor performs the factional kill, it cannot be detected."""
+
+    class Ninja(Ability):
+        tags = frozenset({"ninja", "unstoppable"})
+
+        def perform(
+            self,
+            game: Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
+            *,
+            visit: Visit,
+        ) -> int:
+            if targets is None:
+                targets = tuple(actor for _ in range(self.target_count))
+            target, *_ = targets
+            successes: int = 0
+            for v in target.get_visits(game):
+                if "factional_kill" in v.tags and v.is_active(game):
+                    v.tags |= frozenset({"hidden"})
+                    successes += 1
+            return successes
+
+        def check(
+            self, game: Game, actor: Player, targets: Sequence[Player] | None = None
+        ) -> bool:
+            # Ninja can only target self.
+            return (
+                (self.phase is None or self.phase == game.phase)
+                and actor.is_alive
+                and (targets is None or actor in targets)
+            )
+
+    actions = (Ninja(),)
 
 
 # ROLE MODIFIERS #

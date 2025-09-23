@@ -145,6 +145,12 @@ class Visit:
             and self.status == VisitStatus.PENDING
         )
 
+    def is_active_time(self, game: Game) -> bool:
+        return self.phase == game.phase and self.day_no == game.day_no
+
+    def is_self_target(self) -> bool:
+        return all(t is self.actor for t in self.targets)
+
 
 class Role:
     def __init__(
