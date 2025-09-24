@@ -391,13 +391,12 @@ class AbilityModifier(Modifier, ABC):
         abilities = self.get_modified_abilities(cls)
         if cls_dict is None:
             cls_dict = {
+                "id": f"{cls.id} {self.id}" if issubclass(cls, Role) else cls.id,
                 "actions": tuple(abilities["actions"]),
                 "passives": tuple(abilities["passives"]),
                 "shared_actions": tuple(abilities["shared_actions"]),
                 "tags": cls.tags | self.tags,
             }
-            if issubclass(cls, Role):
-                cls_dict["id"] = f"{cls.id} {self.id}"
         return type(
             f"{self!r}({cls.__name__})",
             (cls,),

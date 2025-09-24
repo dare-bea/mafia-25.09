@@ -12,6 +12,7 @@ from mafia import (
     Alignment,
     Chat,
     Faction,
+    Modifier,
     Role,
     Ability,
     Game,
@@ -1620,6 +1621,93 @@ class Night_X(Night_Specific):
     @property
     def _id(self) -> str:
         return f"Night {','.join(str(n) for n in sorted(self.nights))}"
+
+
+class Activated(Modifier):
+    """Turns passives into actions, requiring the ability to be "activated"."""
+
+    T = TypeVar("T", Role, Alignment)
+
+    def modify(self, cls: type[T], cls_dict: dict[str, Any] | None = None) -> type[T]:
+        if cls_dict is None:
+            cls_dict = {
+                "id": f"{cls.id} {self.id}" if issubclass(cls, Role) else cls.id,
+                "actions": cls.actions + cls.passives,
+                "passives": (),
+                "shared_actions": cls.shared_actions,
+                "tags": cls.tags | self.tags,
+            }
+        return type(
+            f"{self!r}({cls.__name__})",
+            (cls,),
+            cls_dict,
+        )
+
+    def modify_role(self, role: type[Role], *args: Any, **kwargs: Any) -> type[Role]:
+        return self.modify(role)
+
+    def modify_alignment(
+        self, alignment: type[Alignment], *args: Any, **kwargs: Any
+    ) -> type[Alignment]:
+        return self.modify(alignment)
+
+
+class Disloyal(AbilityModifier):
+    """Actions only succeed if used on non-allied players."""
+
+    def modify_ability(self, ability: type[Ability]) -> type[Ability]:
+        def perform(
+            method_self: Ability,
+            game: Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
+            *,
+            visit: Visit,
+        ) -> int:
+            if targets is None:
+                targets = tuple(actor for _ in range(method_self.target_count))
+            target, *_ = targets
+            if actor.alignment is target.alignment:
+                return VisitStatus.FAILURE
+            return ability.perform(method_self, game, actor, targets, visit=visit)
+
+        return type(
+            f"{self!r}({ability.__name__})",
+            (ability,),
+            dict(
+                tags=ability.tags | self.tags,
+                perform=perform,
+            ),
+        )
+    
+
+class Loyal(AbilityModifier):
+    """Actions only succeed if used on allied players."""
+
+    def modify_ability(self, ability: type[Ability]) -> type[Ability]:
+        def perform(
+            method_self: Ability,
+            game: Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
+            *,
+            visit: Visit,
+        ) -> int:
+            if targets is None:
+                targets = tuple(actor for _ in range(method_self.target_count))
+            target, *_ = targets
+            if actor.alignment is not target.alignment:
+                return VisitStatus.FAILURE
+            return ability.perform(method_self, game, actor, targets, visit=visit)
+
+        return type(
+            f"{self!r}({ability.__name__})",
+            (ability,),
+            dict(
+                tags=ability.tags | self.tags,
+                perform=perform,
+            ),
+        )
 
 
 # ALIGNMENTS #
