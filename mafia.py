@@ -473,7 +473,7 @@ class Player:
     actions: list[Ability] = field(default_factory=list, kw_only=True)
     passives: list[Ability] = field(default_factory=list, kw_only=True)
     shared_actions: list[Ability] = field(default_factory=list, kw_only=True)
-    uses: dict[Ability, int] = field(default_factory=dict, kw_only=True)
+    uses: dict[Ability, list[tuple[int, Phase, tuple[Player, ...]]]] = field(default_factory=dict, kw_only=True)
     game: InitVar[Game | None] = field(default=None, kw_only=True)
 
     def kill(self, cause: str) -> None:

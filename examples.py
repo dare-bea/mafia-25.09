@@ -43,7 +43,10 @@ def visit_is_visible(visit: Visit, game: Game) -> bool:
         and visit.is_active_time(game)
     )
 
-def ability_has_valid_targets(ability: Ability, game: Game, actor: Player, is_passive: bool = False) -> bool:
+
+def ability_has_valid_targets(
+    ability: Ability, game: Game, actor: Player, is_passive: bool = False
+) -> bool:
     """Check if an ability has any valid targets."""
     if is_passive:
         return ability.check(game, actor)
@@ -62,8 +65,10 @@ class Resolver:
         status = visit.perform(game)
         visit.status = status
         if visit.ability_type is AbilityType.PASSIVE and status != VisitStatus.PENDING:
-            visit.actor.uses.setdefault(visit.ability, 0)
-            visit.actor.uses[visit.ability] += status
+            visit.actor.uses.setdefault(visit.ability, [])
+            visit.actor.uses[visit.ability].extend(
+                (visit.day_no, visit.phase, visit.targets) for _ in range(visit.status)
+            )
         return status
 
     def resolve_visit(self, game: Game, visit: Visit) -> int:
@@ -110,8 +115,8 @@ class Resolver:
         """Resolve all visits in the game."""
         for visit in game.visits:
             if visit.ability_type is not AbilityType.PASSIVE and visit.is_active(game):
-                visit.actor.uses.setdefault(visit.ability, 0)
-                visit.actor.uses[visit.ability] += 1
+                visit.actor.uses.setdefault(visit.ability, [])
+                visit.actor.uses[visit.ability].append((visit.day_no, visit.phase, visit.targets))
             if visit.ability.immediate:
                 self.resolve_visit(game, visit)
         failed_to_resolve: bool = True
@@ -271,7 +276,7 @@ class Rolestop(Ability):
         if visit.ability_type is AbilityType.PASSIVE and isinstance(
             visit.ability, XShot.XShotPrototype
         ):
-            uses_remaining = visit.ability.max_uses - actor.uses.get(visit.ability, 0)
+            uses_remaining = visit.ability.max_uses - len(actor.uses.get(visit.ability, []))
             max_blocks = (
                 min(self.limit, uses_remaining) if self.limit is not None else uses_remaining
             )
@@ -518,7 +523,7 @@ class Juggernaut(Role):
             if visit.ability_type is AbilityType.PASSIVE and isinstance(
                 visit.ability, XShot.XShotPrototype
             ):
-                max_upgrades = visit.ability.max_uses - actor.uses.get(visit.ability, 0)
+                max_upgrades = visit.ability.max_uses - len(actor.uses.get(visit.ability, []))
             successes: int = 0
             for v in target.get_visits(game):
                 if "factional_kill" in v.tags and v.is_active(game):
@@ -1349,7 +1354,7 @@ class Shield(Role):
             if visit.ability_type is AbilityType.PASSIVE and isinstance(
                 visit.ability, XShot.XShotPrototype
             ):
-                uses_remaining = visit.ability.max_uses - actor.uses.get(visit.ability, 0)
+                uses_remaining = visit.ability.max_uses - len(actor.uses.get(visit.ability, []))
                 max_blocks = (
                     min(self.limit, uses_remaining) if self.limit is not None else uses_remaining
                 )
@@ -1461,21 +1466,19 @@ class Universal_Backup(Role):
             actor.actions.extend(dead_player.role.actions)
             actor.passives.extend(dead_player.role.passives)
             actor.shared_actions.extend(dead_player.role.shared_actions)
-            for action in dead_player.role.actions:
-                actor.uses[action] = actor.uses.get(action, 0) + dead_player.uses.get(action, 0)
-            for passive in dead_player.role.passives:
-                actor.uses[passive] = actor.uses.get(passive, 0) + dead_player.uses.get(
-                    passive, 0
-                )
-            for shared_action in dead_player.role.shared_actions:
-                actor.uses[shared_action] = actor.uses.get(
-                    shared_action, 0
-                ) + dead_player.uses.get(shared_action, 0)
+            for ability in [
+                *dead_player.role.actions,
+                *dead_player.role.passives,
+                *dead_player.role.shared_actions,
+            ]:
+                actor.uses.setdefault(ability, []).extend(dead_player.uses.get(ability, []))
             return VisitStatus.SUCCESS
-        
-        def check(self, game: Game, actor: Player, targets: Sequence[Player] | None = None) -> bool:
+
+        def check(
+            self, game: Game, actor: Player, targets: Sequence[Player] | None = None
+        ) -> bool:
             return (self.phase is None or game.phase == self.phase) and actor.is_alive
-        
+
     passives = (Universal_Backup(),)
 
 
@@ -1511,7 +1514,7 @@ class XShot(AbilityModifier):
         ) -> bool:
             return (
                 ability.check(method_self, game, actor, targets)
-                and actor.uses.get(method_self, 0) < method_self.max_uses
+                and len(actor.uses.get(method_self, [])) < method_self.max_uses
             )
 
         return type(
@@ -1571,6 +1574,27 @@ class Night_Specific(AbilityModifier):
         raise NotImplementedError
 
 
+class Novice(Night_Specific):
+    """Cannot use their abilities on the first night."""
+
+    def night_check(self, day_no: int, /) -> bool:
+        return day_no > 1
+
+
+class Odd_Night(Night_Specific):
+    """Can only use their abilities on odd nights."""
+
+    def night_check(self, day_no: int, /) -> bool:
+        return bool(day_no % 2)
+
+
+class Even_Night(Night_Specific):
+    """Can only use their abilities on even nights."""
+
+    def night_check(self, day_no: int) -> bool:
+        return not (day_no % 2)
+
+
 class Night_X(Night_Specific):
     """Can only use their abilities on nights listed."""
 
@@ -1596,27 +1620,6 @@ class Night_X(Night_Specific):
     @property
     def _id(self) -> str:
         return f"Night {','.join(str(n) for n in sorted(self.nights))}"
-
-
-class Novice(Night_Specific):
-    """Cannot use their abilities on the first night."""
-
-    def night_check(self, day_no: int, /) -> bool:
-        return day_no > 1
-
-
-class Odd_Night(Night_Specific):
-    """Can only use their abilities on odd nights."""
-
-    def night_check(self, day_no: int, /) -> bool:
-        return bool(day_no % 2)
-
-
-class Even_Night(Night_Specific):
-    """Can only use their abilities on even nights."""
-
-    def night_check(self, day_no: int) -> bool:
-        return not (day_no % 2)
 
 
 # ALIGNMENTS #
