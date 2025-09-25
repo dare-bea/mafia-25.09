@@ -25,13 +25,15 @@ from mafia import (
 from nodes import nodes_in_cycles
 
 
-def roleblock_player(game: Game, player: Player) -> VisitStatus:
+def roleblock_player(game: Game, player: Player, visit: Visit | None = None) -> VisitStatus:
     """Roleblocks a player."""
     success = VisitStatus.FAILURE
-    for visit in player.get_visits(game):
-        if visit.ability_type is not AbilityType.PASSIVE and "unstoppable" not in visit.tags:
-            visit.status = VisitStatus.FAILURE
-            visit.tags |= {"roleblocked"}
+    for v in player.get_visits(game):
+        if visit is not None and not Personal.can_interact(visit, v):
+            continue
+        if v.ability_type is not AbilityType.PASSIVE and "unstoppable" not in v.tags:
+            v.status = VisitStatus.FAILURE
+            v.tags |= {"roleblocked"}
             success = VisitStatus.SUCCESS
     return success
 
@@ -188,6 +190,9 @@ class Resolver:
         targets: tuple[Player, ...] | None,
         ability_type: AbilityType,
         ability_idx: int,
+        tags: frozenset[str] | Collection[str] = frozenset(),
+        *,
+        player_inputs: tuple[object, ...] = ()
     ) -> Visit:
         ability = (
             actor.actions[ability_idx]
@@ -209,6 +214,8 @@ class Resolver:
             ability_type=ability_type,
             ability=ability,
             game=game,
+            tags=frozenset(tags),
+            player_inputs=tuple(player_inputs)
         )
 
     def check_lazy_allowed(self, game: Game) -> bool:
@@ -302,6 +309,7 @@ class Rolestop(Ability):
                 v.is_active(game)
                 and "unstoppable" not in v.tags
                 and self.block_check(actor, target, v, visit=visit)
+                and Personal.can_interact(visit, v)
             ):
                 if self.block_visit(actor, target, v, visit=visit) >= VisitStatus.SUCCESS:
                     successes += 1
@@ -503,7 +511,7 @@ class Jailkeeper(Role):
             if targets is None:
                 targets = tuple(actor for _ in range(self.target_count))
             target, *_ = targets
-            roleblock_result = roleblock_player(game, target)
+            roleblock_result = roleblock_player(game, target, visit=visit)
             protection_result = super().perform(game, actor, targets, visit=visit)
             return (
                 VisitStatus.SUCCESS
@@ -540,7 +548,10 @@ class Juggernaut(Role):
                 max_upgrades = visit.ability.max_uses - actor.uses.get(visit.ability, 0)
             successes: int = 0
             for v in target.get_visits(game):
-                if "factional_kill" in v.tags and v.is_active(game):
+                if (
+                    "factional_kill" in v.tags and v.is_active(game)
+                    and Personal.can_interact(visit, v)   # Personal makes Juggernaut useless but just in case it's used for some reason.
+                ):
                     v.tags |= frozenset({"unstoppable"})
                     successes += 1
                     if max_upgrades is not None and max_upgrades <= successes:
@@ -657,7 +668,7 @@ class Roleblocker(Role):
             if targets is None:
                 targets = tuple(actor for _ in range(self.target_count))
             target, *_ = targets
-            return roleblock_player(game, target)
+            return roleblock_player(game, target, visit=visit)
 
     actions = (Roleblocker(),)
 
@@ -699,7 +710,7 @@ class Tracker(Role):
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
             visits: list[Player] = []
             for v in target.get_visits(game):
-                if visit_is_visible(v, game) and v is not visit:
+                if visit_is_visible(v, game) and v is not visit and Personal.can_interact(visit, v):
                     visits.extend(v.targets)
 
             if visits:
@@ -765,7 +776,7 @@ class Watcher(Role):
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
             visits: list[Player] = []
             for v in target.get_visitors(game):
-                if visit_is_visible(v, game) and v is not visit:
+                if visit_is_visible(v, game) and v is not visit and Personal.can_interact(visit, v):
                     visits.append(v.actor)
             if visits:
                 return f"{target.name} was targeted by {', '.join(p.name for p in visits)}."
@@ -797,7 +808,7 @@ class Alien(Role):
             if targets is None:
                 targets = tuple(actor for _ in range(self.target_count))
             target, *_ = targets
-            roleblock_result = roleblock_player(game, target)
+            roleblock_result = roleblock_player(game, target, visit=visit)
             rolestop_result = super().perform(game, actor, targets, visit=visit)
             return (
                 VisitStatus.SUCCESS if roleblock_result or rolestop_result else VisitStatus.FAILURE
@@ -923,7 +934,7 @@ class Detective(Role):
             if any(
                 "kill" in v.tags
                 for v in target.get_visits(game)
-                if v.ability_type is not AbilityType.PASSIVE
+                if v.ability_type is not AbilityType.PASSIVE and Personal.can_interact(visit, v)
             ):
                 return f"{target.name} has tried to kill someone!"
             else:
@@ -973,6 +984,7 @@ class Hider(Role):
 
     class Hider(Ability):
         class Protect_Self(ProtectiveAbility):
+            id = "Hider"
             def block_check(
                 self, actor: Player, target: Player, checked_visit: Visit, *, visit: Visit
             ) -> bool:
@@ -982,6 +994,7 @@ class Hider(Role):
                 )
 
         class Lifelink(Ability):
+            id = "Hider"
             def perform(
                 self,
                 game: Game,
@@ -1184,11 +1197,11 @@ class Motion_Detector(Role):
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
             # Check if target visited someone.
             visited = any(
-                visit_is_visible(v, game) and v is not visit for v in target.get_visits(game)
+                visit_is_visible(v, game) and v is not visit and Personal.can_interact(visit, v) for v in target.get_visits(game)
             )
             # Check if target was visited by someone.
             was_visited = any(
-                visit_is_visible(v, game) and v is not visit for v in target.get_visitors(game)
+                visit_is_visible(v, game) and v is not visit and Personal.can_interact(visit, v) for v in target.get_visitors(game)
             )
             if visited or was_visited:
                 return f"{target.name} targeted someone or was targeted by someone."
@@ -1232,7 +1245,7 @@ class Ninja(Role):
             target, *_ = targets
             successes: int = 0
             for v in target.get_visits(game):
-                if "factional_kill" in v.tags and v.is_active(game):
+                if "factional_kill" in v.tags and v.is_active(game) and Personal.can_interact(visit, v):
                     v.tags |= frozenset({"hidden"})
                     successes += 1
             return successes
@@ -1258,7 +1271,7 @@ class PT_Cop(Role):
 
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
             if any(
-                id != "global" for id, chat in game.chats.items() if target in chat.participants
+                id != "global" for id, chat in game.chats.items() if target in chat.participants and ("personal" not in visit.tags or not id.startswith("faction:"))
             ):
                 return f"{target.name} is in a Private Chat!"
             else:
@@ -1290,7 +1303,7 @@ class Reporter(Role):
             return super().perform(game, actor, targets, visit=visit)
 
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
-            if any(visit_is_visible(v, game) and v is not visit for v in target.get_visits(game)):
+            if any(visit_is_visible(v, game) and v is not visit and Personal.can_interact(visit, v) for v in target.get_visits(game)):
                 return f"{target.name} targeted someone this night!"
             else:
                 return f"{target.name} did not target anyone this night."
@@ -1336,7 +1349,7 @@ class Role_Watcher(Role):
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
             roles: list[str] = []
             for v in target.get_visitors(game):
-                if visit_is_visible(v, game) and v is not visit:
+                if visit_is_visible(v, game) and v is not visit and Personal.can_interact(visit, v):
                     roles.append(v.actor.role.id)
             if roles:
                 return f"{target.name} was targeted by the following roles: {', '.join(roles)}."
@@ -1362,7 +1375,7 @@ class Shield(Role):
                 targets = tuple(actor for _ in range(self.target_count))
             target, *_ = targets
             # Check if a visitor to the target has a pending juggernaut.
-            if any("juggernaut" in v.tags for v in target.get_visitors(game) if v.is_active(game)):
+            if any("juggernaut" in v.tags for v in target.get_visitors(game) if v.is_active(game) and Personal.can_interact(visit, v)):
                 return VisitStatus.PENDING
             max_blocks: int | None
             if visit.ability_type is AbilityType.PASSIVE and isinstance(
@@ -1422,19 +1435,19 @@ class Traffic_Analyst(Role):
             has_private_chat = any(
                 id != "global" and len({p for p in chat.participants if p.is_alive}) > 1
                 for id, chat in game.chats.items()
-                if target in chat.participants
+                if target in chat.participants and ("personal" not in visit.tags or not id.startswith("faction:"))
             )
             # Check if "message" is an ability tag (for Messenger)
             can_message_privately = any(
                 "message" in a.tags
                 for a in [*target.actions, *target.shared_actions]
                 # Check if ability is actually usable (i.e. blocked by X-Shot)
-                if ability_has_valid_targets(a, game, target)
+                if ability_has_valid_targets(a, game, target) and ("personal" not in visit.tags or "factional" not in a.tags)
             ) or any(
                 "message" in p.tags
                 for p in target.passives
                 # Check if ability is actually usable (i.e. blocked by X-Shot)
-                if ability_has_valid_targets(p, game, target, True)
+                if ability_has_valid_targets(p, game, target, True) and ("personal" not in visit.tags or "factional" not in p.tags)
             )
             if has_private_chat or can_message_privately:
                 return f"{target.name} can communicate with other players privately!"
@@ -1773,16 +1786,6 @@ class Lazy(AbilityModifier):
     """
 
     tags = frozenset({"lazy"})
-    
-    def modify_ability(self, ability: type[Ability]) -> type[Ability]:
-        return type(
-            f"{self!r}({ability.__name__})",
-            (ability,),
-            dict(
-                id=ability.id,
-                tags=ability.tags | self.tags,
-            ),
-        )
 
 
 class Weak(AbilityModifier):
@@ -1813,8 +1816,15 @@ class Weak(AbilityModifier):
 
 
 class Personal(AbilityModifier):
-    """Cannot interact with factional abilities."""
-    # TODO: Implement this modifier.
+    """Cannot interact with factional abilities.
+    Does not check: implement in ability.
+    """
+    
+    tags = frozenset({"personal"})
+
+    @staticmethod
+    def can_interact(visit: Visit, affected_visit: Visit) -> bool:
+        return "personal" not in visit.tags or "factional" not in affected_visit.tags
 
 
 # ALIGNMENTS #
@@ -1835,10 +1845,10 @@ class Mafia(Faction):
 
     def player_init(self, game: Game, player: Player) -> None:
         if self.id not in game.chats:
-            game.chats[self.id] = Chat(participants={player})
+            game.chats[f"faction:{self.id}"] = Chat(participants={player})
         else:
-            game.chats[self.id].participants.add(player)
-        game.chats[self.id].send(
+            game.chats[f"faction:{self.id}"].participants.add(player)
+        game.chats[f"faction:{self.id}"].send(
             self.id, f"{player.name} is a {role_name(player.role, player.alignment)}."
         )
 

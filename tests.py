@@ -1,27 +1,29 @@
 from typing import Callable
 import mafia as m
+from mafia import AbilityType as AT
+from mafia import VisitStatus as VS
 import examples
 from pprint import pprint
 
 
 class PrintResolver(examples.Resolver):
     def resolve_visit(self, game: m.Game, visit: m.Visit) -> int:
-        resolved_visits = set(v for v in game.visits if v.status is m.VisitStatus.PENDING) - {
+        resolved_visits = set(v for v in game.visits if v.status is VS.PENDING) - {
             visit
         }
 
         result = super().resolve_visit(game, visit)
 
         print(visit)
-        resolved_visits -= set(v for v in game.visits if v.status is m.VisitStatus.PENDING)
+        resolved_visits -= set(v for v in game.visits if v.status is VS.PENDING)
         for v in resolved_visits:
             print(f"    {v}")
         return result
 
     def resolve_cycles(self, game: m.Game) -> bool:
-        resolved_visits = set(v for v in game.visits if v.status is m.VisitStatus.PENDING)
+        resolved_visits = set(v for v in game.visits if v.status is VS.PENDING)
         successfully_resolved = super().resolve_cycles(game)
-        resolved_visits -= set(v for v in game.visits if v.status is m.VisitStatus.PENDING)
+        resolved_visits -= set(v for v in game.visits if v.status is VS.PENDING)
         print("Cycle detected, resolving...")
         for v in resolved_visits:
             print(f"    {v}")
@@ -51,19 +53,19 @@ def test_catastrophic_rule() -> None:
 
     r.add_passives(game)
 
-    game.visits.append(r.make_visit(game, eve, (alice,), m.AbilityType.SHARED_ACTION, 0))
-    game.visits.append(r.make_visit(game, bob, (eve,), m.AbilityType.ACTION, 0))
-    game.visits.append(r.make_visit(game, eve, (bob,), m.AbilityType.ACTION, 0))
-    game.visits.append(r.make_visit(game, eve, (alice,), m.AbilityType.ACTION, 0))
-    game.visits.append(r.make_visit(game, alice, (eve,), m.AbilityType.ACTION, 0))
+    game.visits.append(r.make_visit(game, eve, (alice,), AT.SHARED_ACTION, 0, {"factional"}))
+    game.visits.append(r.make_visit(game, bob, (eve,), AT.ACTION, 0))
+    game.visits.append(r.make_visit(game, eve, (bob,), AT.ACTION, 0))
+    game.visits.append(r.make_visit(game, eve, (alice,), AT.ACTION, 0))
+    game.visits.append(r.make_visit(game, alice, (eve,), AT.ACTION, 0))
 
     r.resolve_game(game)
     print()
 
     pprint(game)
 
-    assert game.visits[4].status != m.VisitStatus.FAILURE and all(
-        v.status == m.VisitStatus.FAILURE for v in game.visits[:4]
+    assert game.visits[4].status != VS.FAILURE and all(
+        v.status == VS.FAILURE for v in game.visits[:4]
     )
 
 
@@ -94,11 +96,11 @@ def test_xshot_role() -> None:
 
     if alice.actions[0].check(game, alice, (bob,)):
         print(f"{alice.name} is using {alice.actions[0].id} on {bob.name}.")
-        game.visits.append(r.make_visit(game, alice, (bob,), m.AbilityType.ACTION, 0))
+        game.visits.append(r.make_visit(game, alice, (bob,), AT.ACTION, 0))
     else:
         print(f"{alice.name} cannot use {alice.actions[0].id} on {bob.name}.")
         raise AssertionError("Expected check to succeed.")
-    game.visits.append(r.make_visit(game, eve, (bob,), m.AbilityType.SHARED_ACTION, 0))
+    game.visits.append(r.make_visit(game, eve, (bob,), AT.SHARED_ACTION, 0, {"factional"}))
     r.resolve_game(game)
     assert bob.is_alive, "Bob is dead, expected Bulletproof to protect."
     print()
@@ -106,11 +108,11 @@ def test_xshot_role() -> None:
     game.phase, game.day_no = m.Phase.NIGHT, 2
     if alice.actions[0].check(game, alice, (eve,)):
         print(f"{alice.name} is using {alice.actions[0].id} on {eve.name}.")
-        game.visits.append(r.make_visit(game, alice, (eve,), m.AbilityType.ACTION, 0))
+        game.visits.append(r.make_visit(game, alice, (eve,), AT.ACTION, 0))
         raise AssertionError("Expected check to fail.")
     else:
         print(f"{alice.name} cannot use {alice.actions[0].id} on {eve.name}.")
-    game.visits.append(r.make_visit(game, eve, (bob,), m.AbilityType.SHARED_ACTION, 0))
+    game.visits.append(r.make_visit(game, eve, (bob,), AT.SHARED_ACTION, 0, {"factional"}))
     r.resolve_game(game)
     print()
     pprint(game)
@@ -137,8 +139,8 @@ def test_protection() -> None:
         print()
 
     r.add_passives(game)
-    game.visits.append(r.make_visit(game, alice, (bob,), m.AbilityType.ACTION, 0))
-    game.visits.append(r.make_visit(game, eve, (bob,), m.AbilityType.SHARED_ACTION, 0))
+    game.visits.append(r.make_visit(game, alice, (bob,), AT.ACTION, 0))
+    game.visits.append(r.make_visit(game, eve, (bob,), AT.SHARED_ACTION, 0, {"factional"}))
 
     r.resolve_game(game)
     print()
@@ -167,11 +169,11 @@ def test_xshot_macho() -> None:
         print()
 
     r.add_passives(game)
-    game.visits.append(r.make_visit(game, alice, (bob,), m.AbilityType.ACTION, 0))
-    game.visits.append(r.make_visit(game, alice, (carol,), m.AbilityType.ACTION, 0))
-    game.visits.append(r.make_visit(game, alice, (carol,), m.AbilityType.ACTION, 0))
-    game.visits.append(r.make_visit(game, eve, (bob,), m.AbilityType.SHARED_ACTION, 0))
-    game.visits.append(r.make_visit(game, eve, (carol,), m.AbilityType.SHARED_ACTION, 0))
+    game.visits.append(r.make_visit(game, alice, (bob,), AT.ACTION, 0))
+    game.visits.append(r.make_visit(game, alice, (carol,), AT.ACTION, 0))
+    game.visits.append(r.make_visit(game, alice, (carol,), AT.ACTION, 0))
+    game.visits.append(r.make_visit(game, eve, (bob,), AT.SHARED_ACTION, 0, {"factional"}))
+    game.visits.append(r.make_visit(game, eve, (carol,), AT.SHARED_ACTION, 0, {"factional"}))
 
     r.resolve_game(game)
     print()
@@ -200,9 +202,9 @@ def test_tracker_roleblocker() -> None:
         print()
 
     r.add_passives(game)
-    game.visits.append(r.make_visit(game, alice, (eve,), m.AbilityType.ACTION, 0))
-    game.visits.append(r.make_visit(game, bob, (eve,), m.AbilityType.ACTION, 0))
-    game.visits.append(r.make_visit(game, eve, (bob,), m.AbilityType.SHARED_ACTION, 0))
+    game.visits.append(r.make_visit(game, alice, (eve,), AT.ACTION, 0))
+    game.visits.append(r.make_visit(game, bob, (eve,), AT.ACTION, 0))
+    game.visits.append(r.make_visit(game, eve, (bob,), AT.SHARED_ACTION, 0, {"factional"}))
 
     r.resolve_game(game)
     print()
@@ -231,9 +233,9 @@ def test_juggernaut() -> None:
         print()
 
     r.add_passives(game)
-    game.visits.append(r.make_visit(game, alice, (eve,), m.AbilityType.ACTION, 0))
-    game.visits.append(r.make_visit(game, eve, (eve,), m.AbilityType.ACTION, 0))
-    game.visits.append(r.make_visit(game, eve, (bob,), m.AbilityType.SHARED_ACTION, 0))
+    game.visits.append(r.make_visit(game, alice, (eve,), AT.ACTION, 0))
+    game.visits.append(r.make_visit(game, eve, (eve,), AT.ACTION, 0))
+    game.visits.append(r.make_visit(game, eve, (bob,), AT.SHARED_ACTION, 0, {"factional"}))
 
     r.resolve_game(game)
     print()

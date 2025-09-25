@@ -363,16 +363,22 @@ class Modifier:
         )
 
 
-class AbilityModifier(Modifier, ABC):
+class AbilityModifier(Modifier):
     def __init_subclass__(cls) -> None:
         if "id" not in cls.__dict__:
             cls.id = cls.__name__.replace("_", " ")
 
     id: str
 
-    @abstractmethod
     def modify_ability(self, ability: type[Ability]) -> type[Ability]:
-        raise NotImplementedError
+        return type(
+            f"{self!r}({ability.__name__})",
+            (ability,),
+            dict(
+                id=ability.id,
+                tags=ability.tags | self.tags,
+            ),
+        )
 
     def get_modified_abilities(
         self, role: type[Role] | type[Alignment], *args: Any, **kwargs: Any
