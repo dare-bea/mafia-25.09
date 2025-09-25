@@ -1529,6 +1529,9 @@ class XShot(AbilityModifier):
             self.max_uses = max_uses
 
     def modify_ability(self, ability: type[Ability]) -> type[Ability]:
+        if issubclass(ability, XShot.XShotPrototype):
+            raise TypeError(f"{ability} is already X-Shot.")
+        
         def check(
             method_self: XShot.XShotPrototype,
             game: Game,
