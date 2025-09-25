@@ -1053,62 +1053,53 @@ class Hider(Role):
     actions = (Hider(),)
 
 
-@lambda x: x()
-class Jack_of_All_Trades:
+def Jack_of_All_Trades(
+    roles: tuple[type[Role], ...] | None = None,
+    id: str | None = None,
+    tags: frozenset[str] | None = None,
+) -> type[Role]:
     """Has multiple pre-determined 1-Shot roles."""
+    if roles is None:
+        roles = (Cop, Vigilante, Doctor, Roleblocker)
+    _roles = roles
 
-    def __call__(
-        self,
-        roles: tuple[type[Role], ...] | None = None,
-        id: str | None = None,
-        tags: frozenset[str] | None = None,
-    ) -> type[Role]:
-        if roles is None:
-            roles = (Cop, Vigilante, Doctor, Roleblocker)
-        _roles = roles
+    if id is None:
+        id = "Jack of All Trades"
+    _id = id
 
-        if id is None:
-            id = self.id
-        _id = id
+    if tags is None:
+        tags = frozenset().union(*(r.tags for r in roles))
+    _tags = tags
 
-        if tags is None:
-            tags = frozenset().union(*(r.tags for r in roles))
-        _tags = tags
+    class Jack_of_All_Trades(Role):
+        def __init__(
+            self,
+            id: str | None = None,
+            actions: tuple[Ability, ...] | None = None,
+            passives: tuple[Ability, ...] | None = None,
+            shared_actions: tuple[Ability, ...] | None = None,
+            tags: frozenset[str] | None = None,
+            is_adjective: bool | None = None,
+        ):
+            super().__init__(id, actions, passives, shared_actions, tags)
 
-        class Jack_of_All_Trades(Role):
-            def __init__(
-                self,
-                id: str | None = None,
-                actions: tuple[Ability, ...] | None = None,
-                passives: tuple[Ability, ...] | None = None,
-                shared_actions: tuple[Ability, ...] | None = None,
-                tags: frozenset[str] | None = None,
-                is_adjective: bool | None = None,
-            ):
-                super().__init__(id, actions, passives, shared_actions, tags)
+        roles = tuple(XShot(1)(r)() for r in _roles)
+        tags = _tags
+        actions = tuple(a for r in roles for a in r.actions)
+        passives = tuple(a for r in roles for a in r.passives)
 
-            roles = tuple(XShot(1)(r)() for r in _roles)
-            tags = _tags
-            actions = tuple(XShot(1)(type(a))(a.id, a.tags) for r in roles for a in r.actions)
-            passives = tuple(XShot(1)(type(a))(a.id, a.tags) for r in roles for a in r.passives)
-            shared_actions = tuple(
-                XShot(1)(type(a))(a.id, a.tags) for r in roles for a in r.shared_actions
+        id = f"{_id} {', '.join(r.id for r in roles)}"
+
+        def is_role(
+            self, role: Any
+        ) -> TypeGuard[Role | str | type[Role] | Callable[..., type[Role]]]:
+            return (
+                role is Jack_of_All_Trades
+                or super().is_role(role)
+                or any(r.is_role(role) for r in self.roles)
             )
 
-            id = f"{_id} {', '.join(r.id for r in roles)}"
-
-            def is_role(
-                self, role: Any
-            ) -> TypeGuard[Role | str | type[Role] | Callable[..., type[Role]]]:
-                return (
-                    role is Jack_of_All_Trades
-                    or super().is_role(role)
-                    or any(r.is_role(role) for r in self.roles)
-                )
-
-        return Jack_of_All_Trades
-
-    id: str = "Jack of All Trades"
+    return Jack_of_All_Trades
 
 
 class Medical_Student(Role):
@@ -1453,6 +1444,8 @@ class Traffic_Analyst(Role):
                 return f"{target.name} can communicate with other players privately!"
             else:
                 return f"{target.name} cannot communicate with other players privately."
+
+    actions = (Traffic_Analyst(),)
 
 
 class Universal_Backup(Role):

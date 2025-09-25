@@ -418,7 +418,7 @@ class AbilityModifier(Modifier):
         return self.modify(alignment)
 
 
-@dataclass(eq=False)
+@dataclass(frozen=True, eq=True)
 class ChatMessage:
     sender: Player | str
     content: str
@@ -443,6 +443,7 @@ class Chat(list[ChatMessage]):
 @dataclass(eq=False)
 class Player:
     def __post_init__(self, game: Game | None) -> None:
+        self.private_messages.participants.add(self)
         if game is not None:
             game.players.append(self)
             self.role.player_init(game, self)
