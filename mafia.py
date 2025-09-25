@@ -231,6 +231,19 @@ class Role:
                 pass
         return False
 
+    @staticmethod
+    def combine(*roles: type[Role]) -> type[Role]:
+        """Combines multiple roles into one."""
+
+        class CombinedRole(Role):
+            id = " ".join(r.id for r in roles)
+            actions = tuple(a for r in roles for a in r.actions)
+            passives = tuple(a for r in roles for a in r.passives)
+            shared_actions = tuple(a for r in roles for a in r.shared_actions)
+            tags = frozenset().union(*(r.tags for r in roles))
+
+        return CombinedRole
+
 
 class Alignment(ABC):
     def __init__(
@@ -397,7 +410,7 @@ class AbilityModifier(Modifier):
         abilities = self.get_modified_abilities(cls)
         if cls_dict is None:
             cls_dict = {
-                "id": f"{cls.id} {self.id}" if issubclass(cls, Role) else cls.id,
+                "id": f"{self.id} {cls.id}" if issubclass(cls, Role) else cls.id,
                 "actions": tuple(abilities["actions"]),
                 "passives": tuple(abilities["passives"]),
                 "shared_actions": tuple(abilities["shared_actions"]),

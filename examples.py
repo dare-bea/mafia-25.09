@@ -1083,12 +1083,13 @@ def Jack_of_All_Trades(
         ):
             super().__init__(id, actions, passives, shared_actions, tags)
 
+        id = f"{_id} {' '.join(r.id for r in _roles)}"
+
         roles = tuple(XShot(1)(r)() for r in _roles)
         tags = _tags
         actions = tuple(a for r in roles for a in r.actions)
         passives = tuple(a for r in roles for a in r.passives)
-
-        id = f"{_id} {', '.join(r.id for r in roles)}"
+        shared_actions = tuple(a for r in roles for a in r.shared_actions)
 
         def is_role(
             self, role: Any
@@ -1632,7 +1633,7 @@ class Activated(Modifier):
     def modify(self, cls: type[T], cls_dict: dict[str, Any] | None = None) -> type[T]:
         if cls_dict is None:
             cls_dict = {
-                "id": f"{cls.id} {self.id}" if issubclass(cls, Role) else cls.id,
+                "id": f"{self.id} {cls.id}" if issubclass(cls, Role) else cls.id,
                 "actions": cls.actions + cls.passives,
                 "passives": (),
                 "shared_actions": cls.shared_actions,

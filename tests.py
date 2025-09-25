@@ -478,6 +478,50 @@ def test_ninja() -> None:
     assert alice.private_messages[0].content == "Bob was not targeted by anyone.", "Watcher erroneously detected Ninja."
 
 
+def test_personal() -> None:
+    r = PrintResolver()
+    town = examples.Town()
+    mafia = examples.Mafia()
+    game = m.Game(1, m.Phase.NIGHT)
+    personal = examples.Personal()
+
+    alice = m.Player("Alice", personal(examples.Watcher)(), town, game=game)
+    bob = m.Player("Bob", examples.Vanilla(), town, game=game)
+    eve = m.Player("Eve", examples.Vanilla(), mafia, game=game)
+
+    r.print_players(game)
+    r.add_passives(game)
+    game.visits.append(r.make_visit(game, eve, (bob,), AT.SHARED_ACTION, 0, {"factional"}))
+    game.visits.append(r.make_visit(game, alice, (bob,), AT.ACTION, 0))
+    r.resolve_game(game)
+    print()
+    pprint(game)
+
+    print(alice.private_messages)
+    assert alice.private_messages[0].content == "Bob was not targeted by anyone.", "Watcher erroneously detected factional kill."
+
+
+def test_combine() -> None:
+    r = PrintResolver()
+    town = examples.Town()
+    mafia = examples.Mafia()
+    game = m.Game(1, m.Phase.NIGHT)
+    combined = m.Role.combine(examples.Bulletproof, examples.Cop)
+    
+    alice = m.Player("Alice", combined(), town, game=game)
+    eve = m.Player("Eve", examples.Vanilla(), mafia, game=game)
+
+    r.print_players(game)
+    r.add_passives(game)
+    game.visits.append(r.make_visit(game, eve, (alice,), AT.SHARED_ACTION, 0, {"factional"}))
+    game.visits.append(r.make_visit(game, alice, (eve,), AT.ACTION, 0))
+    r.resolve_game(game)
+    print()
+    pprint(game)
+
+    assert alice.is_alive, "Alice is dead, expected Bulletproof to protect."
+    assert alice.private_messages[0].content == "Eve is not aligned with the Town!.", "Cop erroneously detected Town."
+
 # DO TESTS #
 
 TESTS: dict[str, Callable[[], None]] = {
@@ -496,6 +540,8 @@ TESTS: dict[str, Callable[[], None]] = {
     "test_universal_backup": test_universal_backup,
     "test_activated": test_activated,
     "test_ninja": test_ninja,
+    "test_personal": test_personal,
+    "test_combine": test_combine,
 }
 
 
