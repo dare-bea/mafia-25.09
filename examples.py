@@ -63,6 +63,8 @@ def ability_has_valid_targets(
 class Resolver:
     """Resolves visits in a game."""
 
+    lazy_allowed: bool = True
+
     def do_visit(self, game: Game, visit: Visit) -> int:
         status = visit.perform(game)
         visit.status = status
@@ -73,6 +75,10 @@ class Resolver:
 
     def resolve_visit(self, game: Game, visit: Visit) -> int:
         """Resolve a visit and return the result. If the visit cannot be resolved, return VisitStatus.PENDING."""
+        # Prevent if the visit is lazy and lazy is not allowed.
+        if "lazy" in visit.tags and not self.lazy_allowed:
+            visit.status = VisitStatus.FAILURE
+            return VisitStatus.FAILURE
         # Perform if the ability is immediate.
         if visit.ability.immediate:
             return self.do_visit(game, visit)
@@ -144,6 +150,9 @@ class Resolver:
                 successfully_resolved = self.resolve_cycles(game)
                 if not successfully_resolved:
                     raise RuntimeError("Failed to resolve game.")
+        for visit in game.visits:
+            if "investigate" in visit.tags and visit.is_active_time(game) and visit.status == VisitStatus.FAILURE:
+                visit.actor.private_messages.send(visit.ability.id, "Your ability failed, and you did not recieve a result.")
 
     def resolve_cycles(self, game: Game) -> bool:
         successfully_resolved: bool = False
@@ -202,6 +211,9 @@ class Resolver:
             game=game,
         )
 
+    def check_lazy_allowed(self, game: Game) -> bool:
+        self.lazy_allowed = sum(bool("town" not in p.alignment.tags) for p in game.players) > 1
+        return self.lazy_allowed
 
 class Kill(Ability):
     """Kills a player."""
@@ -1569,6 +1581,7 @@ class Night_Specific(AbilityModifier):
             f"{self!r}({ability.__name__})",
             (ability,),
             dict(
+                id=ability.id,
                 tags=ability.tags | self.tags,
                 check=check,
             ),
@@ -1657,6 +1670,7 @@ class Disloyal(AbilityModifier):
             f"{self!r}({ability.__name__})",
             (ability,),
             dict(
+                id=ability.id,
                 tags=ability.tags | self.tags,
                 perform=perform,
             ),
@@ -1686,6 +1700,7 @@ class Loyal(AbilityModifier):
             f"{self!r}({ability.__name__})",
             (ability,),
             dict(
+                id=ability.id,
                 tags=ability.tags | self.tags,
                 perform=perform,
             ),
@@ -1717,10 +1732,89 @@ class Indecisive(AbilityModifier):
             f"{self!r}({ability.__name__})",
             (ability,),
             dict(
+                id=ability.id,
                 tags=ability.tags | self.tags,
                 check=check,
             ),
         )
+
+
+class Non_Consecutive_Night(AbilityModifier):
+    """Cannot use the ability on consecutive nights."""
+    
+    id = "Non-Consecutive Night"
+
+    def modify_ability(self, ability: type[Ability]) -> type[Ability]:
+        def check(
+            method_self: Ability,
+            game: Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
+        ) -> bool:
+            for v in actor.action_history:
+                if method_self is v.ability and game.day_no <= v.day_no + 1:
+                    return False
+            return ability.check(method_self, game, actor, targets)
+
+        return type(
+            f"{self!r}({ability.__name__})",
+            (ability,),
+            dict(
+                id=ability.id,
+                tags=ability.tags | self.tags,
+                check=check,
+            ),
+        )
+
+
+class Lazy(AbilityModifier):
+    """Ability fails if there is only 1 anti-town player left at the start of the phase.
+    Modifier does not check: use Resolver.check_lazy_allowed() before resolving the game.
+    """
+
+    tags = frozenset({"lazy"})
+    
+    def modify_ability(self, ability: type[Ability]) -> type[Ability]:
+        return type(
+            f"{self!r}({ability.__name__})",
+            (ability,),
+            dict(
+                id=ability.id,
+                tags=ability.tags | self.tags,
+            ),
+        )
+
+
+class Weak(AbilityModifier):
+    """Dies if targets an anti-town player."""
+
+    def modify_ability(self, ability: type[Ability]) -> type[Ability]:
+        def perform(
+            method_self: Ability,
+            game: Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
+            *,
+            visit: Visit,
+        ) -> int:
+            if targets is not None and any("town" not in t.alignment.tags for t in targets):
+                actor.kill(self.id)
+            return ability.perform(method_self, game, actor, targets, visit=visit)
+
+        return type(
+            f"{self!r}({ability.__name__})",
+            (ability,),
+            dict(
+                id=ability.id,
+                tags=ability.tags | self.tags,
+                perform=perform,
+            )
+        )
+
+
+class Personal(AbilityModifier):
+    """Cannot interact with factional abilities."""
+    # TODO: Implement this modifier.
 
 
 # ALIGNMENTS #
