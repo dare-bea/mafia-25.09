@@ -253,7 +253,7 @@ class Kill(Ability):
             and (
                 targets is None
                 or all(t not in actor.known_players
-                       and t.alignment.id == actor.alignment.id
+                       or t.alignment.id != actor.alignment.id
                        for t in targets)
             )
         )
@@ -1872,7 +1872,7 @@ class Mafia(Faction):
         tags = frozenset({"kill", "factional_kill"})
 
     def player_init(self, game: Game, player: Player) -> None:
-        if self.id not in game.chats:
+        if f"faction:{self.id}" not in game.chats:
             game.chats[f"faction:{self.id}"] = Chat(participants={player})
         else:
             game.chats[f"faction:{self.id}"].participants.add(player)
