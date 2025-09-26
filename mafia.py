@@ -194,7 +194,7 @@ class Role:
 
     def player_init(self, game: Game, player: Player) -> None:
         """Called when a player is initialized with this role."""
-        pass
+        ...
 
     id: str
     actions: tuple[Ability, ...] = ()
@@ -231,16 +231,36 @@ class Role:
                 pass
         return False
 
-    @staticmethod
-    def combine(*roles: type[Role]) -> type[Role]:
+    @classmethod
+    def combine(cls, *roles: type[Role]) -> type[Role]:
         """Combines multiple roles into one."""
 
+        if cls is Role:
+            _roles = roles
+        else:
+            _roles = (cls, *roles)
+
         class CombinedRole(Role):
+            roles = tuple(r() for r in _roles)
             id = " ".join(r.id for r in roles)
             actions = tuple(a for r in roles for a in r.actions)
             passives = tuple(a for r in roles for a in r.passives)
             shared_actions = tuple(a for r in roles for a in r.shared_actions)
             tags = frozenset().union(*(r.tags for r in roles))
+            is_adjective = all(r.is_adjective for r in roles)
+            modifiers = frozenset().union(*(r.modifiers for r in roles))
+
+            def player_init(self, game: Game, player: Player) -> None:
+                super().player_init(game, player)
+                for r in self.roles:
+                    r.player_init(game, player)
+
+            def is_role(
+                self, role: Any
+            ) -> TypeGuard[
+                Role | str | type[Role] | Modifier | type[Modifier] | Callable[..., type[Role]]
+            ]:
+                return any(r.is_role(role) for r in self.roles) or super().is_role(role)
 
         return CombinedRole
 

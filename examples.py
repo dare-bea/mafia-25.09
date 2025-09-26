@@ -1079,48 +1079,25 @@ def Jack_of_All_Trades(
     tags: frozenset[str] | None = None,
 ) -> type[Role]:
     """Has multiple pre-determined 1-Shot roles."""
+    
+    oneshot = XShot(1)
+
     if roles is None:
         roles = (Cop, Vigilante, Doctor, Roleblocker)
-    _roles = roles
+    _roles = (oneshot(r) for r in roles)
 
     if id is None:
         id = "Jack of All Trades"
-    _id = id
+    
+    _id = id + " " + " ".join(r.id for r in roles)
 
     if tags is None:
         tags = frozenset().union(*(r.tags for r in roles))
-    _tags = tags
 
-    class Jack_of_All_Trades(Role):
-        def __init__(
-            self,
-            id: str | None = None,
-            actions: tuple[Ability, ...] | None = None,
-            passives: tuple[Ability, ...] | None = None,
-            shared_actions: tuple[Ability, ...] | None = None,
-            tags: frozenset[str] | None = None,
-            is_adjective: bool | None = None,
-        ):
-            super().__init__(id, actions, passives, shared_actions, tags)
-
-        id = f"{_id} {' '.join(r.id for r in _roles)}"
-
-        roles = tuple(XShot(1)(r)() for r in _roles)
-        tags = _tags
-        actions = tuple(a for r in roles for a in r.actions)
-        passives = tuple(a for r in roles for a in r.passives)
-        shared_actions = tuple(a for r in roles for a in r.shared_actions)
-
-        def is_role(
-            self, role: Any
-        ) -> TypeGuard[Role | str | type[Role] | Callable[..., type[Role]]]:
-            return (
-                role is Jack_of_All_Trades
-                or super().is_role(role)
-                or any(r.is_role(role) for r in self.roles)
-            )
-
-    return Jack_of_All_Trades
+    new_role = Role.combine(*_roles)
+    new_role.id = _id
+    new_role.tags = tags
+    return new_role
 
 
 class Medical_Student(Role):
