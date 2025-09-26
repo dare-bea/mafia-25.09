@@ -481,6 +481,17 @@ class Player:
             game.players.append(self)
             self.role.player_init(game, self)
             self.alignment.player_init(game, self)
+            for player in game.players:
+                if player is self:
+                    continue
+                if "informed" in self.alignment.tags and player.alignment.id == self.alignment.id:
+                    self.known_players.add(player)
+                if "informed" in self.role.tags and player.role.id == self.role.id:
+                    self.known_players.add(player)
+                if "informed" in player.alignment.tags and player.alignment.id == self.alignment.id:
+                    player.known_players.add(self)
+                if "informed" in player.role.tags and player.role.id == self.role.id:
+                    player.known_players.add(self)
         for ability in self.role.actions:
             self.actions.append(ability)
         for ability in self.role.passives:
@@ -514,6 +525,7 @@ class Player:
     shared_actions: list[Ability] = field(default_factory=list, kw_only=True)
     uses: dict[Ability, int] = field(default_factory=dict, kw_only=True)
     action_history: list[Visit] = field(default_factory=list, kw_only=True)
+    known_players: set[Player] = field(default_factory=set, kw_only=True)
     game: InitVar[Game | None] = field(default=None, kw_only=True)
 
     def kill(self, cause: str) -> None:

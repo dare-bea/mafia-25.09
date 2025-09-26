@@ -247,6 +247,17 @@ class Kill(Ability):
     tags = frozenset({"kill"})
     killer: str
 
+    def check(self, game: Game, actor: Player, targets: Sequence[Player] | None = None) -> bool:
+        return (
+            super().check(game, actor, targets)
+            and (
+                targets is None
+                or all(t not in actor.known_players
+                       and t.alignment.id == actor.alignment.id
+                       for t in targets)
+            )
+        )
+
     def perform(
         self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit
     ) -> VisitStatus:
