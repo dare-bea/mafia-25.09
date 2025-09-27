@@ -247,6 +247,17 @@ class Kill(Ability):
     tags = frozenset({"kill"})
     killer: str
 
+    def check(self, game: Game, actor: Player, targets: Sequence[Player] | None = None) -> bool:
+        return (
+            super().check(game, actor, targets)
+            and (
+                targets is None
+                or all(t not in actor.known_players
+                       or t.alignment.id != actor.alignment.id
+                       for t in targets)
+            )
+        )
+
     def perform(
         self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit
     ) -> VisitStatus:
@@ -1861,7 +1872,7 @@ class Mafia(Faction):
         tags = frozenset({"kill", "factional_kill"})
 
     def player_init(self, game: Game, player: Player) -> None:
-        if self.id not in game.chats:
+        if f"faction:{self.id}" not in game.chats:
             game.chats[f"faction:{self.id}"] = Chat(participants={player})
         else:
             game.chats[f"faction:{self.id}"].participants.add(player)
