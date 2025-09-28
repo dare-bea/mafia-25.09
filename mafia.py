@@ -475,23 +475,8 @@ class Chat(list[ChatMessage]):
 
 @dataclass(eq=False)
 class Player:
-    def __post_init__(self, game: Game | None) -> None:
+    def __post_init__(self) -> None:
         self.private_messages.participants.add(self)
-        if game is not None:
-            game.players.append(self)
-            self.role.player_init(game, self)
-            self.alignment.player_init(game, self)
-            for player in game.players:
-                if player is self:
-                    continue
-                if "informed" in self.alignment.tags and player.alignment.id == self.alignment.id:
-                    self.known_players.add(player)
-                if "informed" in self.role.tags and player.role.id == self.role.id:
-                    self.known_players.add(player)
-                if "informed" in player.alignment.tags and player.alignment.id == self.alignment.id:
-                    player.known_players.add(self)
-                if "informed" in player.role.tags and player.role.id == self.role.id:
-                    player.known_players.add(self)
         for ability in self.role.actions:
             self.actions.append(ability)
         for ability in self.role.passives:
@@ -526,7 +511,6 @@ class Player:
     uses: dict[Ability, int] = field(default_factory=dict, kw_only=True)
     action_history: list[Visit] = field(default_factory=list, kw_only=True)
     known_players: set[Player] = field(default_factory=set, kw_only=True)
-    game: InitVar[Game | None] = field(default=None, kw_only=True)
 
     def kill(self, cause: str) -> None:
         self.death_causes.append(cause)
@@ -555,3 +539,21 @@ class Game:
     @property
     def alive_players(self) -> Iterator[Player]:
         return filter(lambda p: p.is_alive, self.players)
+
+    def add_player(self, *players: Player) -> None:
+        """Adds a player to the game, initializing their role and alignment."""
+        for player in players:
+            self.players.append(player)
+            player.role.player_init(self, player)
+            player.alignment.player_init(self, player)
+            for p in self.players:
+                if p is player:
+                    continue
+                if "informed" in player.alignment.tags and p.alignment.id == player.alignment.id:
+                    player.known_players.add(p)
+                if "informed" in player.role.tags and p.role.id == player.role.id:
+                    player.known_players.add(p)
+                if "informed" in p.alignment.tags and p.alignment.id == player.alignment.id:
+                    p.known_players.add(player)
+                if "informed" in p.role.tags and p.role.id == player.role.id:
+                    p.known_players.add(player)

@@ -48,9 +48,11 @@ def test_catastrophic_rule() -> None:
     mafia = examples.Mafia()
 
     game = m.Game(1, m.Phase.NIGHT)
-    alice = m.Player("Alice", cop, town, game=game)
-    bob = m.Player("Bob", jailkeeper, town, game=game)
-    eve = m.Player("Eve", roleblocker, mafia, game=game)
+    alice = m.Player("Alice", cop, town)
+    bob = m.Player("Bob", jailkeeper, town)
+    eve = m.Player("Eve", roleblocker, mafia)
+
+    game.add_player(alice, bob, eve)
 
     for player in game.players:
         print(f"{player}: {player.role_name}")
@@ -88,9 +90,11 @@ def test_xshot_role() -> None:
     mafia = examples.Mafia()
 
     game = m.Game()
-    alice = m.Player("Alice", xshot_cop, town, game=game)
-    bob = m.Player("Bob", xshot_bulletproof, town, game=game)
-    eve = m.Player("Eve", vanilla, mafia, game=game)
+    alice = m.Player("Alice", xshot_cop, town)
+    bob = m.Player("Bob", xshot_bulletproof, town)
+    eve = m.Player("Eve", vanilla, mafia)
+
+    game.add_player(alice, bob, eve)
 
     for player in game.players:
         print(f"{player}: {player.role_name}")
@@ -135,9 +139,11 @@ def test_protection() -> None:
     mafia = examples.Mafia()
 
     game = m.Game(1, m.Phase.NIGHT)
-    alice = m.Player("Alice", examples.Doctor(), town, game=game)
-    bob = m.Player("Bob", examples.Vanilla(), town, game=game)
-    eve = m.Player("Eve", examples.Vanilla(), mafia, game=game)
+    alice = m.Player("Alice", examples.Doctor(), town)
+    bob = m.Player("Bob", examples.Vanilla(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
+
+    game.add_player(alice, bob, eve)
 
     for player in game.players:
         print(f"{player}: {player.role_name}")
@@ -164,10 +170,12 @@ def test_xshot_macho() -> None:
     mafia = examples.Mafia()
 
     game = m.Game(1, m.Phase.NIGHT)
-    alice = m.Player("Alice", examples.Doctor(), town, game=game)
-    bob = m.Player("Bob", examples.XShot(1)(examples.Macho)(), town, game=game)
-    carol = m.Player("Carol", examples.XShot(1)(examples.Macho)(), town, game=game)
-    eve = m.Player("Eve", examples.Vanilla(), mafia, game=game)
+    alice = m.Player("Alice", examples.Doctor(), town)
+    bob = m.Player("Bob", examples.XShot(1)(examples.Macho)(), town)
+    carol = m.Player("Carol", examples.XShot(1)(examples.Macho)(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
+
+    game.add_player(alice, bob, carol, eve)
 
     for player in game.players:
         print(f"{player}: {player.role_name}")
@@ -198,9 +206,11 @@ def test_tracker_roleblocker() -> None:
     mafia = examples.Mafia()
 
     game = m.Game(1, m.Phase.NIGHT)
-    alice = m.Player("Alice", examples.Roleblocker(), town, game=game)
-    bob = m.Player("Bob", examples.Tracker(), town, game=game)
-    eve = m.Player("Eve", examples.Vanilla(), mafia, game=game)
+    alice = m.Player("Alice", examples.Roleblocker(), town)
+    bob = m.Player("Bob", examples.Tracker(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
+
+    game.add_player(alice, bob, eve)
 
     for player in game.players:
         print(f"{player}: {player.role_name}")
@@ -229,9 +239,11 @@ def test_juggernaut() -> None:
     mafia = examples.Mafia()
 
     game = m.Game(1, m.Phase.NIGHT)
-    alice = m.Player("Alice", examples.Roleblocker(), town, game=game)
-    bob = m.Player("Bob", examples.Vanilla(), town, game=game)
-    eve = m.Player("Eve", examples.Juggernaut(), mafia, game=game)
+    alice = m.Player("Alice", examples.Roleblocker(), town)
+    bob = m.Player("Bob", examples.Vanilla(), town)
+    eve = m.Player("Eve", examples.Juggernaut(), mafia)
+
+    game.add_player(alice, bob, eve)
 
     for player in game.players:
         print(f"{player}: {player.role_name}")
@@ -258,9 +270,11 @@ def test_investigative_fail() -> None:
     mafia = examples.Mafia()
     game = m.Game(1, m.Phase.NIGHT)
 
-    alice = m.Player("Alice", examples.Roleblocker(), town, game=game)
-    bob = m.Player("Bob", examples.Cop(), town, game=game)
-    eve = m.Player("Eve", examples.Vanilla(), mafia, game=game)
+    alice = m.Player("Alice", examples.Roleblocker(), town)
+    bob = m.Player("Bob", examples.Cop(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
+
+    game.add_player(alice, bob, eve)
 
     r.print_players(game)
     r.add_passives(game)
@@ -280,9 +294,11 @@ def test_ascetic() -> None:
     mafia = examples.Mafia()
     game = m.Game(1, m.Phase.NIGHT)
 
-    alice = m.Player("Alice", examples.Ascetic(), town, game=game)
-    bob = m.Player("Bob", examples.Doctor(), town, game=game)
-    eve = m.Player("Eve", examples.Vanilla(), mafia, game=game)
+    alice = m.Player("Alice", examples.Ascetic(), town)
+    bob = m.Player("Bob", examples.Doctor(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
+
+    game.add_player(alice, bob, eve)
 
     r.print_players(game)
     r.add_passives(game)
@@ -301,9 +317,11 @@ def test_detective() -> None:
     mafia = examples.Mafia()
     game = m.Game(1, m.Phase.NIGHT)
 
-    alice = m.Player("Alice", examples.Detective(), town, game=game)
-    bob = m.Player("Bob", examples.Vanilla(), town, game=game)
-    eve = m.Player("Eve", examples.Vanilla(), mafia, game=game)
+    alice = m.Player("Alice", examples.Detective(), town)
+    bob = m.Player("Bob", examples.Vanilla(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
+
+    game.add_player(alice, bob, eve)
 
     r.print_players(game)
     r.add_passives(game)
@@ -329,9 +347,11 @@ def test_jack_of_all_trades() -> None:
 
     joat = examples.Jack_of_All_Trades((examples.Cop, examples.Doctor,))
 
-    alice = m.Player("Alice", joat(), town, game=game)
-    bob = m.Player("Bob", examples.Vanilla(), town, game=game)
-    eve = m.Player("Eve", examples.Vanilla(), mafia, game=game)
+    alice = m.Player("Alice", joat(), town)
+    bob = m.Player("Bob", examples.Vanilla(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
+
+    game.add_player(alice, bob, eve)
 
     r.print_players(game)
     r.add_passives(game)
@@ -352,10 +372,12 @@ def test_hider() -> None:
     mafia = examples.Mafia()
     game = m.Game(1, m.Phase.NIGHT)
 
-    alice = m.Player("Alice", examples.Hider(), town, game=game)
-    bob = m.Player("Bob", examples.Vanilla(), town, game=game)
-    carol = m.Player("Carol", examples.Vigilante(), town, game=game)
-    eve = m.Player("Eve", examples.Vanilla(), mafia, game=game)
+    alice = m.Player("Alice", examples.Hider(), town)
+    bob = m.Player("Bob", examples.Vanilla(), town)
+    carol = m.Player("Carol", examples.Vigilante(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
+
+    game.add_player(alice, bob, carol, eve)
 
     r.print_players(game)
     r.add_passives(game)
@@ -377,11 +399,13 @@ def test_traffic_analyst() -> None:
     mafia = examples.Mafia()
     game = m.Game(1, m.Phase.NIGHT)
 
-    alice = m.Player("Alice", examples.Traffic_Analyst(), town, game=game)
-    bob = m.Player("Bob", examples.Mason(), town, game=game)
-    m.Player("Carol", examples.Mason(), town, game=game)
-    dave = m.Player("Dave", examples.Messenger(), town, game=game)
-    eve = m.Player("Eve", examples.Vanilla(), mafia, game=game)
+    alice = m.Player("Alice", examples.Traffic_Analyst(), town)
+    bob = m.Player("Bob", examples.Mason(), town)
+    carol = m.Player("Carol", examples.Mason(), town)
+    dave = m.Player("Dave", examples.Messenger(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
+
+    game.add_player(alice, bob, carol, dave, eve)
 
     r.print_players(game)
     r.add_passives(game)
@@ -410,11 +434,13 @@ def test_universal_backup() -> None:
     mafia = examples.Mafia()
     game = m.Game(1, m.Phase.NIGHT)
 
-    alice = m.Player("Alice", examples.Universal_Backup(), town, game=game)
-    bob = m.Player("Bob", examples.Vigilante(), town, game=game)
-    carol = m.Player("Carol", examples.Cop(), town, game=game)
-    dave = m.Player("Dave", examples.Doctor(), mafia, game=game)
-    eve = m.Player("Eve", examples.Vanilla(), mafia, game=game)
+    alice = m.Player("Alice", examples.Universal_Backup(), town)
+    bob = m.Player("Bob", examples.Vigilante(), town)
+    carol = m.Player("Carol", examples.Cop(), town)
+    dave = m.Player("Dave", examples.Doctor(), mafia)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
+
+    game.add_player(alice, bob, carol, dave, eve)
 
     r.print_players(game)
     r.add_passives(game)
@@ -438,9 +464,11 @@ def test_activated() -> None:
     game = m.Game(1, m.Phase.NIGHT)
     activated = examples.Activated()
 
-    alice = m.Player("Alice", activated(examples.Bulletproof)(), town, game=game)
-    bob = m.Player("Bob", activated(examples.Bulletproof)(), town, game=game)
-    eve = m.Player("Eve", examples.Vanilla(), mafia, game=game)
+    alice = m.Player("Alice", activated(examples.Bulletproof)(), town)
+    bob = m.Player("Bob", activated(examples.Bulletproof)(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
+
+    game.add_player(alice, bob, eve)
 
     r.print_players(game)
     r.add_passives(game)
@@ -461,9 +489,11 @@ def test_ninja() -> None:
     mafia = examples.Mafia()
     game = m.Game(1, m.Phase.NIGHT)
 
-    alice = m.Player("Alice", examples.Watcher(), town, game=game)
-    bob = m.Player("Bob", examples.Vanilla(), town, game=game)
-    eve = m.Player("Eve", examples.Ninja(), mafia, game=game)
+    alice = m.Player("Alice", examples.Watcher(), town)
+    bob = m.Player("Bob", examples.Vanilla(), town)
+    eve = m.Player("Eve", examples.Ninja(), mafia)
+
+    game.add_player(alice, bob, eve)
     
     r.print_players(game)
     r.add_passives(game)
@@ -485,9 +515,11 @@ def test_personal() -> None:
     game = m.Game(1, m.Phase.NIGHT)
     personal = examples.Personal()
 
-    alice = m.Player("Alice", personal(examples.Watcher)(), town, game=game)
-    bob = m.Player("Bob", examples.Vanilla(), town, game=game)
-    eve = m.Player("Eve", examples.Vanilla(), mafia, game=game)
+    alice = m.Player("Alice", personal(examples.Watcher)(), town)
+    bob = m.Player("Bob", examples.Vanilla(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
+
+    game.add_player(alice, bob, eve)
 
     r.print_players(game)
     r.add_passives(game)
@@ -507,9 +539,11 @@ def test_combine() -> None:
     mafia = examples.Mafia()
     game = m.Game(1, m.Phase.NIGHT)
     combined = m.Role.combine(examples.Bulletproof, examples.Cop)
-    
-    alice = m.Player("Alice", combined(), town, game=game)
-    eve = m.Player("Eve", examples.Vanilla(), mafia, game=game)
+
+    alice = m.Player("Alice", combined(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
+
+    game.add_player(alice, eve)
 
     r.print_players(game)
     r.add_passives(game)

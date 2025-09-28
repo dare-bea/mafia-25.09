@@ -936,6 +936,25 @@ class Companion(Role):
             # Companion can only be used once.
             return super().check(game, actor, targets) and actor.uses.get(self, 0) == 0
 
+    @property
+    def informed_player(self) -> Player | None:
+        for action in self.actions:
+            if isinstance(action, Companion.Companion):
+                return action.informed_player
+        return None
+
+    @informed_player.setter
+    def informed_player(self, value: Player | None) -> None:
+        for action in self.actions:
+            if isinstance(action, Companion.Companion):
+                action.informed_player = value
+    
+    @informed_player.deleter
+    def informed_player(self) -> None:
+        for action in self.actions:
+            if isinstance(action, Companion.Companion):
+                action.informed_player = None
+
     def __init__(
         self,
         id: str | None = None,
@@ -947,10 +966,7 @@ class Companion(Role):
         informed_player: Player | None = None,
     ):
         super().__init__(id, actions, passives, shared_actions, tags, is_adjective)
-        self.informed_player = informed_player
-
-    def player_init(self, game: Game, player: Player) -> None:
-        player.actions.append(Companion.Companion(self.informed_player))
+        self.actions: tuple[Companion.Companion] = (Companion.Companion(informed_player),)
 
 
 class Detective(Role):
