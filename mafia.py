@@ -69,6 +69,8 @@ class Ability:
     def __init_subclass__(cls) -> None:
         if "id" not in cls.__dict__:
             cls.id = cls.__name__.replace("_", " ")
+        if "description" not in cls.__dict__ and cls.__doc__ is not None:
+            cls.description = cls.__doc__.strip()
 
     def __str__(self) -> str:
         return self.id
@@ -84,6 +86,7 @@ class Ability:
         )
 
     id: str
+    description: str | None = None  # Description of the ability.
     player_inputs_types: tuple[type, ...] = ()  # Input types for player input validation.
     tags: frozenset[str] = frozenset()
 
@@ -210,6 +213,7 @@ class Role:
     ) -> TypeGuard[
         Role | str | type[Role] | Modifier | type[Modifier] | Callable[..., type[Role]]
     ]:
+        """Check if this role is the given role."""
         if isinstance(role, str):
             return self.id == role or role in self.modifiers
         if isinstance(role, Role):

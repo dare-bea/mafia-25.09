@@ -381,6 +381,7 @@ class Bodyguard(Role):
     """Protects a player from one kill, but dies if successful."""
 
     class Bodyguard(ProtectiveAbility):
+        """You may target another player to protect them from a single nightkill on that night. If you successfully protect another player, you will die in their place."""
         def block_visit(
             self, actor: Player, target: Player, blocked_visit: Visit, *, visit: Visit
         ) -> VisitStatus:
@@ -396,6 +397,7 @@ class Bulletproof(Role):
     """Blocks all kills targeting the player."""
 
     class Bulletproof(ProtectiveAbility):
+        """Any killing actions that target you will fail."""
         limit = None
 
     passives = (Bulletproof(),)
@@ -406,6 +408,7 @@ class Cop(Role):
     """Checks if a player is aligned with the Town."""
 
     class Cop(InvestigativeAbility):
+        """You may investigate another player to learn if they are Town or Not Town. If your action fails, you will receive 'No Result.'"""
         tags = frozenset({"investigate", "gun"})
 
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
@@ -422,6 +425,7 @@ class Doctor(Role):
     """Protects a player from one kill."""
 
     class Doctor(ProtectiveAbility):
+        """You may target another player to protect them from a single nightkill on that night."""
         tags = frozenset({"protect", "mafia_no_gun"})
         limit = 1
 
@@ -432,6 +436,7 @@ class Friendly_Neighbor(Role):
     """Informs a player of the actor's alignment."""
 
     class Friendly_Neighbor(Ability):
+        """You may target another player to inform them that you are aligned with the Town."""
         tags = frozenset({"inform"})
 
         def perform(
@@ -462,6 +467,7 @@ class Gunsmith(Role):
     aforementioned roles have guns."""
 
     class Gunsmith(InvestigativeAbility):
+        """You may investigate another player to learn whether or not they have a gun. If your action fails, you will receive 'No Result.'. You can find an overview of which roles do and do not have guns <a target="_blank" href="https://wiki.mafiascum.net/index.php?title=Gunsmith#Normal_version">here</a>."""
         tags = frozenset({"investigate", "gun"})
 
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:

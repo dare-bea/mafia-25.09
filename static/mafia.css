@@ -1,0 +1,15 @@
+.role_name {
+  font-weight: bold;
+}
+
+.Alignment-Town {
+  color: green;
+}
+
+.Alignment-Mafia {
+  color: red;
+}
+
+.Alignment-Werewolf {
+  color: brown;
+}
