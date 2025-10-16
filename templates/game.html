@@ -14,7 +14,7 @@
     <nav class="navbar">
         <a class="active" href="/game/{{id}}/mod">Overview</a>
         {% for player in game.players %}
-        <a href="/game/{{id}}/mod/player/{{player.name |urlencode}}">{{ player.name |e}}</a>
+        <a href="/game/{{id}}/mod/player/{{player.name |e|urlencode}}">{{ player.name |e}}</a>
         {% endfor %}
     </nav>
     {% endif %}

@@ -467,7 +467,7 @@ class Gunsmith(Role):
     aforementioned roles have guns."""
 
     class Gunsmith(InvestigativeAbility):
-        """You may investigate another player to learn whether or not they have a gun. If your action fails, you will receive 'No Result.'. You can find an overview of which roles do and do not have guns <a target="_blank" href="https://wiki.mafiascum.net/index.php?title=Gunsmith#Normal_version">here</a>."""
+        """You may investigate another player to learn whether or not they have a gun. If your action fails, you will receive 'No Result.'. You can find an overview of which roles do and do not have guns [here](https://wiki.mafiascum.net/index.php?title=Gunsmith#Normal_version)."""
         tags = frozenset({"investigate", "gun"})
 
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:

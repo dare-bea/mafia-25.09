@@ -22,14 +22,31 @@
     <h1>{{ player.name |e}} &ndash; {{player|role}}</h1>
 
     <h2>Actions</h2>
-    <div class="actions">
-        {% for action in player.actions %}
-        <input type="radio" name="action" id="action-{{action.id}}" value="{{action.id}}">
-        {# WARNING: do not allow arbitrary ability descriptions without remembering to sanitize the input. #}
-        <label for="action-{{action.id}}">{{ action.id |e}} &ndash; {{action.description|safe}}</label>
-        {% else %}
-        <p>No actions available.</p>
-        {% endfor %}
+    <div id="actions">
+        <table id="action-list">
+            <tr>
+                <th></th>
+                <th>Action</th>
+                <th>Description</th>
+            </tr>
+            {% for action in player.actions %}
+            <tr>
+                <td><input type="radio" name="action" id="action-{{action.id|s|e}}" value="{{action.id|e}}"></td>
+                <td><label for="action-{{action.id|s|e}}">{{ action.id |e}}</label></td>
+            </tr>
+            {% endfor %}
+        </table>
+        <table id="player-list">
+            <tr>
+                <th></th>
+                <th>Player</th>
+            </tr>
+            {% for p in game.players %}
+            <tr>
+                <td><input type="radio" name="player" id="player-{{p.id|s|e}}" value="{{p.id|e}}"></td>
+                <td><label for="player-{{p.id|s|e}}">{{ p.name |e}}</label></td>
+            </tr>
+        </table>
     </div>
 </body>
 
