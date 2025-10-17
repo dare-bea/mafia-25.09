@@ -5,13 +5,14 @@ Simple Normal roles, abilities, and alignments.
 from collections.abc import Sequence, Callable, Collection
 from dataclasses import replace
 from itertools import product
-from typing import Any, TypeGuard, TypeVar
+from typing import Any, TypeVar
 from abc import ABC, abstractmethod
 from mafia import (
     AbilityModifier,
     AbilityType,
     Alignment,
     Chat,
+    PrivateChat,
     Faction,
     Modifier,
     Role,
@@ -20,7 +21,6 @@ from mafia import (
     Player,
     Visit,
     VisitStatus,
-    role_name,
 )
 from nodes import nodes_in_cycles
 
@@ -617,12 +617,16 @@ class Mason(Role):
     """Can chat with other Masons."""
 
     def player_init(self, game: Game, player: Player) -> None:
+        chat: Chat
         if self.id not in game.chats:
-            game.chats[self.id] = Chat(participants={player})
+            chat = PrivateChat(participants={player})
+            game.chats[self.id] = chat
+        elif isinstance(chat := game.chats[self.id], PrivateChat):
+            chat.participants.add(player)
         else:
-            game.chats[self.id].participants.add(player)
-        game.chats[self.id].send(
-            self.id, f"{player.name} is a {role_name(player.role, player.alignment)}."
+            raise TypeError(f"Expected PrivateChat, got {type(chat)}.")
+        chat.send(
+            self.id, f"{player.name} is a {player.role_name}."
         )
 
     tags = frozenset({"chat", "informed"})
@@ -659,18 +663,22 @@ class Neighborizer(Role):
                 targets = tuple(actor for _ in range(self.target_count))
             target, *_ = targets
             chat_id = f"{self.id}:{actor.name}"
+            chat: Chat
             if chat_id not in game.chats:
-                game.chats[chat_id] = Chat(participants={actor, target})
+                chat = PrivateChat(participants={actor, target})
+                game.chats[chat_id] = chat
+            elif isinstance(chat := game.chats[chat_id], PrivateChat):
+                chat.participants.add(target)
             else:
-                game.chats[chat_id].participants.add(target)
-            game.chats[chat_id].send(
+                raise TypeError(f"Expected PrivateChat, got {type(chat)}.")
+            chat.send(
                 self.id, f"{target.name} has been added into the neighborhood."
             )
             return VisitStatus.SUCCESS
 
     def player_init(self, game: Game, player: Player) -> None:
         chat_id = f"{self.id}:{player.name}"
-        game.chats[chat_id] = Chat(participants={player})
+        game.chats[chat_id] = PrivateChat(participants={player})
         game.chats[chat_id].send(self.id, f"{player.name} is a {self.id}.")
         # Hide full identity of Neighborizer.
 
@@ -972,7 +980,7 @@ class Companion(Role):
         informed_player: Player | None = None,
     ):
         super().__init__(id, actions, passives, shared_actions, tags, is_adjective)
-        self.actions: tuple[Companion.Companion] = (Companion.Companion(informed_player),)
+        self.actions = (Companion.Companion(informed_player),)
 
 
 class Detective(Role):
@@ -1241,9 +1249,11 @@ class Neighbor(Role):
     def player_init(self, game: Game, player: Player) -> None:
         chat_id = f"{self.id}"
         if chat_id not in game.chats:
-            game.chats[chat_id] = Chat(participants={player})
+            game.chats[chat_id] = PrivateChat(participants={player})
+        elif isinstance(chat := game.chats[chat_id], PrivateChat):
+            chat.participants.add(player)
         else:
-            game.chats[chat_id].participants.add(player)
+            raise TypeError(f"Expected PrivateChat, got {type(chat)}.")
         game.chats[chat_id].send(self.id, f"{player.name} is a {self.id}.")
         # Hide full identity of Neighbors.
 
@@ -1299,9 +1309,9 @@ class PT_Cop(Role):
 
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
             if any(
-                id != "global"
+                target in chat.participants
                 for id, chat in game.chats.items()
-                if target in chat.participants
+                if isinstance(chat, PrivateChat)
                 and ("personal" not in visit.tags or not id.startswith("faction:"))
             ):
                 return f"{target.name} is in a Private Chat!"
@@ -1475,9 +1485,9 @@ class Traffic_Analyst(Role):
 
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
             has_private_chat = any(
-                id != "global" and len({p for p in chat.participants if p.is_alive}) > 1
+                target in chat.participants and len({p for p in chat.participants if p.is_alive}) > 1
                 for id, chat in game.chats.items()
-                if target in chat.participants
+                if isinstance(chat, PrivateChat)
                 and ("personal" not in visit.tags or not id.startswith("faction:"))
             )
             # Check if "message" is an ability tag (for Messenger)
@@ -1894,12 +1904,17 @@ class Mafia(Faction):
         tags = frozenset({"kill", "factional_kill"})
 
     def player_init(self, game: Game, player: Player) -> None:
-        if f"faction:{self.id}" not in game.chats:
-            game.chats[f"faction:{self.id}"] = Chat(participants={player})
+        chat_id = f"faction:{self.id}"
+        chat: Chat
+        if chat_id not in game.chats:
+            chat = PrivateChat(participants={player})
+            game.chats[chat_id] = chat
+        elif isinstance(chat := game.chats[chat_id], PrivateChat):
+            chat.participants.add(player)
         else:
-            game.chats[f"faction:{self.id}"].participants.add(player)
-        game.chats[f"faction:{self.id}"].send(
-            self.id, f"{player.name} is a {role_name(player.role, player.alignment)}."
+            raise TypeError(f"Expected PrivateChat, got {type(chat)}.")
+        chat.send(
+            self.id, f"{player.name} is a {player.role_name}."
         )
 
     shared_actions = (Mafia_Factional_Kill(),)
