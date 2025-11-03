@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence, Iterator
 from types import EllipsisType
-from typing import Any, TypeGuard, TypeVar, cast
+from typing import Any, Self, TypeGuard, TypeVar, cast
 from enum import Enum, auto, IntEnum
 from dataclasses import InitVar, dataclass, field
 
@@ -32,7 +32,6 @@ class AbilityType(Enum):
     ACTION = auto()
     PASSIVE = auto()
     SHARED_ACTION = auto()
-
 
 def role_name(role: Role, alignment: Alignment) -> str:
     """
@@ -153,6 +152,18 @@ class Visit:
     def is_self_target(self) -> bool:
         return all(t is self.actor for t in self.targets)
 
+Owner = TypeVar("Owner", "Role", "Alignment", None)
+class OwnedAbility(Ability):
+    def __init__(self, *args: Any, owner: Owner = None, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.owner = owner
+
+    @classmethod
+    def from_ability(cls, ability: Ability, owner: Owner = None) -> Self:
+        self = OwnedAbility.__new__(cls) # don't call __init__
+        self.__dict__.update(ability.__dict__)
+        self.owner = owner
+        return self
 
 class Role:
     def __init__(
@@ -506,17 +517,17 @@ class Player:
     def __post_init__(self) -> None:
         self.private_messages.participants.add(self)
         for ability in self.role.actions:
-            self.actions.append(ability)
+            self.actions.append(OwnedAbility.from_ability(ability, self.role))
         for ability in self.role.passives:
-            self.passives.append(ability)
+            self.passives.append(OwnedAbility.from_ability(ability, self.role))
         for ability in self.role.shared_actions:
-            self.shared_actions.append(ability)
+            self.shared_actions.append(OwnedAbility.from_ability(ability, self.role))
         for ability in self.alignment.actions:
-            self.actions.append(ability)
+            self.actions.append(OwnedAbility.from_ability(ability, self.alignment))
         for ability in self.alignment.passives:
-            self.passives.append(ability)
+            self.passives.append(OwnedAbility.from_ability(ability, self.alignment))
         for ability in self.alignment.shared_actions:
-            self.shared_actions.append(ability)
+            self.shared_actions.append(OwnedAbility.from_ability(ability, self.alignment))
 
     # def __repr__(self) -> str:
     #     return f"Player({self.name!r}, {self.role!r}, {self.alignment!r}, private_messages={self.private_messages!r})"
@@ -533,10 +544,10 @@ class Player:
     alignment: Alignment
     private_messages: PrivateChat = field(default_factory=PrivateChat, kw_only=True)
     death_causes: list[str] = field(default_factory=list, kw_only=True)
-    actions: list[Ability] = field(default_factory=list, kw_only=True)
-    passives: list[Ability] = field(default_factory=list, kw_only=True)
-    shared_actions: list[Ability] = field(default_factory=list, kw_only=True)
-    uses: dict[Ability, int] = field(default_factory=dict, kw_only=True)
+    actions: list[OwnedAbility] = field(default_factory=list, kw_only=True)
+    passives: list[OwnedAbility] = field(default_factory=list, kw_only=True)
+    shared_actions: list[OwnedAbility] = field(default_factory=list, kw_only=True)
+    uses: dict[OwnedAbility, int] = field(default_factory=dict, kw_only=True)
     action_history: list[Visit] = field(default_factory=list, kw_only=True)
     known_players: set[Player] = field(default_factory=set, kw_only=True)
 

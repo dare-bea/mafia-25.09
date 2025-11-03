@@ -10,19 +10,28 @@
 </head>
 
 <body>
-    {% if mod %}
-    <nav class="navbar">
-        <a class="active" href="/game/{{id}}/mod">Overview</a>
-        {% for player in game.players %}
-        <a href="/game/{{id}}/mod/player/{{player.name |e|urlencode}}">{{ player.name |e}}</a>
-        {% endfor %}
-    </nav>
-    {% endif %}
+    <input type="hidden" name="modtoken" value="{{ modtoken |e}}">
     
-    <h1>Game</h1>
-    {% for player in game.players %}
-    <p>{{ player.name |e}} &ndash; {{player|role}} </span></p>
-    {% endfor %}
+    <h1>Game #{{data.game_id}}: {{data.phase | title}} {{data.day_no}}</h1>
+
+    <h2>Players</h2>
+    <ul>
+        {% for player in data.players %}
+        {% if player.is_alive %}
+        <li>{{ player.name |e}} &ndash; {{player.role_name_html|safe}}</li>
+        {% else %}
+        <li><s>{{ player.name |e}} &ndash; {{player.role_name_html|safe}}</s></li>
+        {% endif %}
+        {% endfor %}
+    </ul>
+
+    <h2>Chats</h2>
+    <ul>
+        {% for chat in data.chats %}
+        <li>{{ chat.id |e}} ({{ chat.message_count }} messages)</li>
+        {% endfor %}
+    </ul>
+    
 </body>
 
 <script src="/static/script.js"></script>

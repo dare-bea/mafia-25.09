@@ -5,7 +5,7 @@ Simple Normal roles, abilities, and alignments.
 from collections.abc import Sequence, Callable, Collection
 from dataclasses import replace
 from itertools import product
-from typing import Any, TypeVar
+from typing import Any, Generator, TypeVar
 from abc import ABC, abstractmethod
 from mafia import (
     AbilityModifier,
@@ -48,7 +48,7 @@ def visit_is_visible(visit: Visit, game: Game) -> bool:
     )
 
 
-def ability_has_valid_targets(
+def has_valid_targets(
     ability: Ability, game: Game, actor: Player, is_passive: bool = False
 ) -> bool:
     """Check if an ability has any valid targets."""
@@ -61,6 +61,16 @@ def ability_has_valid_targets(
             return True
     return False
 
+def get_valid_targets(
+    ability: Ability, game: Game, actor: Player, is_passive: bool = False
+) -> Generator[tuple[Player, ...], None, None]:
+    """Get all valid targets for an ability."""
+    if is_passive and ability.check(game, actor):
+        yield tuple(actor for _ in range(ability.target_count))
+        return
+    for targets in product(game.players, repeat=ability.target_count):
+        if ability.check(game, actor, targets):
+            yield targets
 
 class Resolver:
     """Resolves visits in a game."""
@@ -1495,13 +1505,13 @@ class Traffic_Analyst(Role):
                 "message" in a.tags
                 for a in [*target.actions, *target.shared_actions]
                 # Check if ability is actually usable (i.e. blocked by X-Shot)
-                if ability_has_valid_targets(a, game, target)
+                if has_valid_targets(a, game, target)
                 and ("personal" not in visit.tags or "factional" not in a.tags)
             ) or any(
                 "message" in p.tags
                 for p in target.passives
                 # Check if ability is actually usable (i.e. blocked by X-Shot)
-                if ability_has_valid_targets(p, game, target, True)
+                if has_valid_targets(p, game, target, True)
                 and ("personal" not in visit.tags or "factional" not in p.tags)
             )
             if has_private_chat or can_message_privately:
@@ -1943,3 +1953,21 @@ class Serial_Killer(Faction):
     role_names: dict[str, str] = {
         "Vanilla": "{alignment}",
     }
+
+
+ROLES: dict[str, type[Role]] = {
+    v.id: v
+    for v in vars().values()
+    if isinstance(v, type)
+    and issubclass(v, Role)
+    and v is not Role
+}
+
+ALIGNMENTS: dict[str, type[Alignment]] = {
+    v.id: v
+    for v in vars().values()
+    if isinstance(v, type)
+    and issubclass(v, Alignment)
+    and v is not Alignment
+    and v is not Faction
+}
