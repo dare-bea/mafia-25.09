@@ -1,17 +1,13 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Callable, ParamSpec
 from itertools import count
 import random
 from secrets import token_urlsafe
 
-from flask import Flask, redirect, render_template, abort, render_template_string, request
-import markdown as md
-import nh3
+from flask import Flask, render_template_string, request
 from markupsafe import Markup
 from werkzeug.datastructures import Headers
-from urllib.parse import quote
 
 import mafia as m
 import examples as ex
@@ -19,7 +15,7 @@ import examples as ex
 # CUSTOM EXTENSIONS #
 
 class Game(m.Game):
-    def __init__(self, *args: Any, mod_token: str | None = None, **kwargs: Any) -> None:
+    def __init__(self, *args, mod_token: str | None = None, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         if mod_token is None:
             mod_token = token_urlsafe(16)
@@ -31,7 +27,7 @@ r = ex.Resolver()
 
 # JINJA2 HELPERS #
 
-def slugify(obj: Any) -> str:
+def slugify(obj: object) -> str:
     return re.sub(r"\s", "-", str(obj))
 
 def role(player: m.Player) -> Markup:
@@ -41,23 +37,12 @@ def role(player: m.Player) -> Markup:
         player=player
     ))
 
-P = ParamSpec("P")
-def safe_function(func: Callable[P, Any]) -> Callable[P, Markup]:
-    def inner(*args: P.args, **kwargs: P.kwargs) -> Markup:
-        return Markup(func(*args, **kwargs))
-    return inner
-
-clean = safe_function(nh3.clean)
-
 app = Flask(__name__)
 
 app.jinja_env.filters.update(dict(
     s = slugify,
     slugify = slugify,
-    md = md.markdown,
-    markdown = md.markdown,
     role = role,
-    clean = clean,
 ))
 
 # API V0 ENDPOINTS #
@@ -970,39 +955,6 @@ def api_v0_send_chat_message(game_id: int, chat_id: str) -> ...:
         return {"message": "'content' field is not a string"}, 400
     chat.send(player.name if player is not None else "Moderator", body["content"])
     return "", 204
-
-# BROWSER-FACING ENDPOINTS #
-
-@app.route('/')
-def index() -> ...:
-    return render_template('index.html')
-
-@app.route('/games/<int:id>/')
-def game(id: int) -> ...:
-    if id not in games:
-        abort(404)
-    return render_template('game.html', game=games[id], id=id)
-
-@app.route('/games/<int:id>/mod')
-def game_mod(id: int) -> ...:
-    if id not in games:
-        abort(404)
-    mod_token = request.args.get('modtoken')
-    if mod_token is None:
-        return redirect(f'/mod-login?href={quote(request.full_path)}', 401)
-    if mod_token != games[id].mod_token:
-        abort(403)
-    with app.test_client() as client:
-        response = client.get(
-            f"/api/v0/games/{id}",
-            headers={
-                "Authorization-Mod-Token": mod_token,
-            }
-        )
-        if not (200 <= response.status_code < 300):
-            return response.get_json(), response.status_code
-        data = response.get_json()
-    return render_template('game.html', game=games[id], id=id, mod_token=mod_token, data=data)
 
 games: dict[int, Game] = {}
 game_count = count(0)
