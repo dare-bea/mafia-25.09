@@ -1998,8 +1998,8 @@ for name, obj in variables.items():
         if (
             get_origin(rt) is type
             and len(args := get_args(rt)) > 0
-            and isinstance(args[0], type)  #type: ignore[misc]
-            and issubclass(args[0], Role)  #type: ignore[misc]
+            and isinstance(args[0], type)  # type: ignore[misc]
+            and issubclass(args[0], Role)  # type: ignore[misc]
         ):
             COMBINED_ROLES[name] = obj
 

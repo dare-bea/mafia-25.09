@@ -567,7 +567,8 @@ def api_v0_get_abilities(game_id: int, name: str) -> Any:
             {
                 "id": a.id,
                 "used_by": visit.actor.name
-                if (visit := next((v for v in game.queued_visits if v.ability is a), None)) is not None
+                if (visit := next((v for v in game.queued_visits if v.ability is a), None))
+                is not None
                 else None,
                 "phase": a.phase.name if a.phase is not None else None,
                 "immediate": a.immediate,
@@ -712,11 +713,7 @@ def api_v0_queue_ability(game_id: int, name: str) -> Any:
         if target_list is None:
             # Remove action from queue
             prev_visit = next(
-                (
-                    v
-                    for v in game.queued_visits
-                    if v.ability is ability
-                ),
+                (v for v in game.queued_visits if v.ability is ability),
                 None,
             )
             if prev_visit is not None:
@@ -759,11 +756,7 @@ def api_v0_queue_ability(game_id: int, name: str) -> Any:
             )
             continue
         prev_visit = next(
-            (
-                v
-                for v in game.queued_visits
-                if v.ability is ability
-            ),
+            (v for v in game.queued_visits if v.ability is ability),
             None,
         )
         if prev_visit is not None:
