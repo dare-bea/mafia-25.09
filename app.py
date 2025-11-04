@@ -4,6 +4,7 @@ import re
 from itertools import count
 import random
 from secrets import token_urlsafe
+from typing import Any
 
 from flask import Flask, render_template_string, request
 from markupsafe import Markup
@@ -14,6 +15,7 @@ import examples as ex
 
 # CUSTOM EXTENSIONS #
 
+
 class Game(m.Game):
     def __init__(self, *args, mod_token: str | None = None, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -23,29 +25,38 @@ class Game(m.Game):
         self.chats["global"] = m.Chat()
         self.queued_visits: list[m.Visit] = []
 
+
 r = ex.Resolver()
 
 # JINJA2 HELPERS #
 
+
 def slugify(obj: object) -> str:
     return re.sub(r"\s", "-", str(obj))
 
+
 def role(player: m.Player) -> Markup:
-    return Markup(render_template_string(
-        "<span class=\"role_name Alignment-{{ player.alignment |e|s }}\">"
-        "{{ player.role_name |e}}</span>",
-        player=player
-    ))
+    return Markup(
+        render_template_string(
+            '<span class="role_name Alignment-{{ player.alignment |e|s }}">'
+            "{{ player.role_name |e}}</span>",
+            player=player,
+        )
+    )
+
 
 app = Flask(__name__)
 
-app.jinja_env.filters.update(dict(
-    s = slugify,
-    slugify = slugify,
-    role = role,
-))
+app.jinja_env.filters.update(
+    dict(
+        s=slugify,
+        slugify=slugify,
+        role=role,
+    )
+)
 
 # API V0 ENDPOINTS #
+
 
 def get_permissions(game: Game, headers: Headers) -> tuple[str | None, m.Player | None]:
     mod_token: str | None = headers.get("Authorization-Mod-Token")
@@ -53,8 +64,9 @@ def get_permissions(game: Game, headers: Headers) -> tuple[str | None, m.Player 
     player: m.Player | None = next((p for p in game.players if p.name == player_name), None)
     return mod_token, player
 
+
 @app.get("/api/v0/games")
-def api_v0_games() -> ...:
+def api_v0_games() -> Any:
     """
     Get a list of games.
 
@@ -74,10 +86,7 @@ def api_v0_games() -> ...:
         "games": [
             {
                 "id": id,
-                "players": [
-                    player.name
-                    for player in game.players
-                ],
+                "players": [player.name for player in game.players],
                 "phase": game.phase.name,
                 "day_no": game.day_no,
             }
@@ -85,12 +94,13 @@ def api_v0_games() -> ...:
         ]
     }
 
+
 @app.post("/api/v0/games")
-def api_v0_create_game() -> ...:
+def api_v0_create_game() -> Any:
     """Create a new game.
 
     Authorization: None
-    
+
     Request Body:
     * `players`: `string[]`
     * `roles`: `object[]`
@@ -99,11 +109,11 @@ def api_v0_create_game() -> ...:
     * `start_day`: `int` (default: `1`)
     * `start_phase`: `PHASE` (default: `"DAY"`)
     * `shuffle_roles`: `bool` (default: `true`)
-    
+
     Response Body:
     * `game_id`: `int`
     * `mod_token`: `string`
-    
+
     Status Codes:
     * 201 Created
     * 400 Bad Request
@@ -144,11 +154,15 @@ def api_v0_create_game() -> ...:
     if not all(isinstance(role, dict) for role in body["roles"]):
         return {"message": "'roles' field contains non-object values"}, 400
     if not all("role" in role and "alignment" in role for role in body["roles"]):
-        return {"message": "'roles' field contains objects missing 'role' or 'alignment' fields"}, 400
+        return {
+            "message": "'roles' field contains objects missing 'role' or 'alignment' fields"
+        }, 400
     if not all(isinstance(role["role"], str) for role in body["roles"]):
         return {"message": "'roles' field contains objects with non-string 'role' fields"}, 400
     if not all(isinstance(role["alignment"], str) for role in body["roles"]):
-        return {"message": "'roles' field contains objects with non-string 'alignment' fields"}, 400
+        return {
+            "message": "'roles' field contains objects with non-string 'alignment' fields"
+        }, 400
 
     # Field value validation
     if len(body["players"]) != len(body["roles"]):
@@ -159,7 +173,9 @@ def api_v0_create_game() -> ...:
         try:
             phase = m.Phase[body["start_phase"]]
         except KeyError:
-            return {"message": f"'start_phase' field is not a valid phase: {body['start_phase']}"}, 400
+            return {
+                "message": f"'start_phase' field is not a valid phase: {body['start_phase']}"
+            }, 400
 
     # Create game
     role_list = []
@@ -170,21 +186,21 @@ def api_v0_create_game() -> ...:
         role_name = role_align["role"]
         alignment_name = role_align["alignment"]
         if role_name not in roles:
-            role = ex.ROLES.get(role_name)
-            if role is None:
+            role_type = ex.ROLES.get(role_name)
+            if role_type is None:
                 return {"message": f"Role '{role_name}' does not exist"}, 400
-            roles[role_name] = role
+            roles[role_name] = role_type
         else:
-            role = roles[role_name]
+            role_type = roles[role_name]
         if alignment_name not in alignments:
-            alignment = ex.ALIGNMENTS.get(alignment_name)
-            if alignment is None:
+            alignment_type = ex.ALIGNMENTS.get(alignment_name)
+            if alignment_type is None:
                 return {"message": f"Alignment '{alignment_name}' does not exist"}, 400
-            alignment = alignment()
+            alignment = alignment_type()
             alignments[alignment_name] = alignment
         else:
             alignment = alignments[alignment_name]
-        role_list.append((role(), alignment))
+        role_list.append((role_type(), alignment))
 
     if body["shuffle_roles"]:
         random.shuffle(role_list)
@@ -196,17 +212,18 @@ def api_v0_create_game() -> ...:
     game.chats["global"].send("System", "Welcome to the game!")
     for player_name, (role, alignment) in zip(body["players"], role_list):
         game.add_player(m.Player(player_name, role, alignment))
-    
+
     id = next(game_count)
     games[id] = game
     return {"game_id": id, "mod_token": game.mod_token}, 201
 
+
 @app.get("/api/v0/games/<int:id>")
-def api_v0_get_game(id: int) -> ...:
+def api_v0_get_game(id: int) -> Any:
     """Get game overview.
-    
+
     Authorization: None (Moderators/Players get extra information)
-    
+
     Response Body:
     * `game_id`: `int`
     * `day_no`: `int`
@@ -220,7 +237,7 @@ def api_v0_get_game(id: int) -> ...:
     * `chats`: `object[]`
         * `id`: `string`
         * `message_count`: `int`
-    
+
     Status Codes:
     * 200 OK
     * 404 Not Found
@@ -250,16 +267,11 @@ def api_v0_get_game(id: int) -> ...:
                 "role_name_html": role(p),
                 "role": p.role.id,
                 "alignment": p.alignment.id,
-            } if is_mod or not p.is_alive or (
-                player is not None
-                and (
-                    p == player
-                    or p in player.known_players
-                )
-            ) else {
-                "name": p.name,
-                "is_alive": p.is_alive
             }
+            if is_mod
+            or not p.is_alive
+            or (player is not None and (p == player or p in player.known_players))
+            else {"name": p.name, "is_alive": p.is_alive}
             for p in game.players
         ],
         "chats": [
@@ -269,19 +281,20 @@ def api_v0_get_game(id: int) -> ...:
             }
             for id, chat in game.chats.items()
             if chat.has_read_perms(game, player)
-        ]
+        ],
     }
 
+
 @app.put("/api/v0/games/<int:id>")
-def api_v0_update_game(id: int) -> ...:
+def api_v0_update_game(id: int) -> Any:
     """Update game data.
-    
+
     Authorization: Moderator
-    
+
     Request Body:
     * `day_no`: `int` (default: `1`)
     * `phase`: `PHASE` (default: `"DAY"`)
-    
+
     Status Codes:
     * 204 No Content
     * 400 Bad Request
@@ -299,16 +312,16 @@ def api_v0_update_game(id: int) -> ...:
         return {"message": "Not authenticated"}, 401
     if mod_token != game.mod_token:
         return {"message": "Not the moderator"}, 403
-    
+
     body = request.get_json()
     if body is None:
         return {"message": "Request body is not JSON"}, 415
     if not isinstance(body, dict):
         return {"message": "Request body is not a JSON object"}, 400
-    
+
     body.setdefault("day_no", game.day_no)
     body.setdefault("phase", game.phase.name)
-    
+
     if not isinstance(body["day_no"], int):
         return {"message": "'day_no' field is not an integer"}, 400
     try:
@@ -317,18 +330,21 @@ def api_v0_update_game(id: int) -> ...:
         try:
             phase = m.Phase[body["start_phase"]]
         except KeyError:
-            return {"message": f"'start_phase' field is not a valid phase: {body['start_phase']}"}, 400
+            return {
+                "message": f"'start_phase' field is not a valid phase: {body['start_phase']}"
+            }, 400
 
     game.day_no = body["day_no"]
     game.phase = phase
     return "", 204
 
+
 @app.patch("/api/v0/games/<int:id>")
-def api_v0_patch_game(id: int) -> ...:
+def api_v0_patch_game(id: int) -> Any:
     """Update game data.
-    
+
     Authorization: Moderator
-    
+
     Request Body:
     * `actions`: An array containing any number of the following strings:
         * `"dequeue"` - Dequeue all queued visits.
@@ -367,9 +383,11 @@ def api_v0_patch_game(id: int) -> ...:
         else:
             game.phase = m.Phase.DAY
             game.day_no += 1
+    return "", 204
+
 
 @app.get("/api/v0/games/<int:game_id>/players")
-def api_v0_get_players(game_id: int) -> ...:
+def api_v0_get_players(game_id: int) -> Any:
     """Get an array of players.
 
     Returns `"players"` field from using `GET /api/v0/games/{game_id}`."""
@@ -378,12 +396,13 @@ def api_v0_get_players(game_id: int) -> ...:
 
     return api_v0_get_game(game_id)["players"]
 
+
 @app.get("/api/v0/games/<int:game_id>/players/<string:name>")
-def api_v0_get_player(game_id: int, name: str) -> ...:
+def api_v0_get_player(game_id: int, name: str) -> Any:
     """Get player-specific information.
-    
+
     Authorization: Player (Self), Moderator
-    
+
     Response Body:
     * `name`: `string`
     * `is_alive`: `bool`
@@ -406,7 +425,7 @@ def api_v0_get_player(game_id: int, name: str) -> ...:
         * `alignment`: `string`
     * `private_messages`: `object`
         * `message_count`: `int`
-    
+
     Status Codes:
     * 200 OK
     * 401 Unauthorized
@@ -460,15 +479,16 @@ def api_v0_get_player(game_id: int, name: str) -> ...:
         ],
         "private_messages": {
             "message_count": len(player.private_messages),
-        }
+        },
     }
 
+
 @app.get("/api/v0/games/<int:game_id>/players/<string:name>/abilities")
-def api_v0_get_abilities(game_id: int, name: str) -> ...:
+def api_v0_get_abilities(game_id: int, name: str) -> Any:
     """Get a list of abilities a player has.
-    
+
     Authorization: Player (Self), Moderator
-    
+
     Response Body:
     * `actions`: `object[]`
         * `id`: `string`
@@ -493,7 +513,7 @@ def api_v0_get_abilities(game_id: int, name: str) -> ...:
         * `phase`: `PHASE | null`
         * `immediate`: `bool`
         * `queued`: `bool` &mdash; is this passive being used this phase
-    
+
     Status Codes:
     * 200 OK
     * 401 Unauthorized
@@ -519,71 +539,75 @@ def api_v0_get_abilities(game_id: int, name: str) -> ...:
         "actions": [
             {
                 "id": a.id,
-                "owner": a.owner.id if a.owner is not None else None,
                 "phase": a.phase.name if a.phase is not None else None,
                 "immediate": a.immediate,
                 "target_count": a.target_count,
                 "targets": [
-                    [t.name for t in targets]
-                    for targets in ex.get_valid_targets(a, game, player)
-                ] if a.target_count > 0 else [],
-                "queued": [
-                    t.name for t in v
-                ] if (v := next(
-                    (v.targets for v in game.queued_visits if v.actor == player and v.ability == a),
-                    None
-                )) is not None else None,
+                    [t.name for t in targets] for targets in ex.get_valid_targets(a, game, player)
+                ]
+                if a.target_count > 0
+                else [],
+                "queued": [t.name for t in v]
+                if (
+                    v := next(
+                        (
+                            v.targets
+                            for v in game.queued_visits
+                            if v.actor == player and v.ability == a
+                        ),
+                        None,
+                    )
+                )
+                is not None
+                else None,
             }
             for a in player.actions
         ],
         "shared_actions": [
             {
                 "id": a.id,
-                "owner": a.owner.id if a.owner is not None else None,
-                "used_by": v.actor.name if (v := next(
-                    (v for v in game.queued_visits if v.ability == a),
-                    None
-                )) is not None else None,
+                "used_by": visit.actor.name
+                if (visit := next((v for v in game.queued_visits if v.ability is a), None)) is not None
+                else None,
                 "phase": a.phase.name if a.phase is not None else None,
                 "immediate": a.immediate,
                 "target_count": a.target_count,
                 "targets": [
-                    [t.name for t in targets]
-                    for targets in ex.get_valid_targets(a, game, player)
-                ] if a.target_count > 0 else [],
-                "queued": [
-                    t.name for t in v
-                ] if (v := next(
-                    (v.targets for v in game.queued_visits if v.ability == a),
-                    None
-                )) is not None else None,
+                    [t.name for t in targets] for targets in ex.get_valid_targets(a, game, player)
+                ]
+                if a.target_count > 0
+                else [],
+                "queued": [t.name for t in v]
+                if (v := next((v.targets for v in game.queued_visits if v.ability == a), None))
+                is not None
+                else None,
             }
             for a in player.shared_actions
         ],
         "passives": [
             {
                 "id": a.id,
-                "owner": a.owner.id if a.owner is not None else None,
                 "phase": a.phase.name if a.phase is not None else None,
                 "immediate": a.immediate,
                 "queued": a.check(game, player),
             }
             for a in player.passives
-        ]
+        ],
     }
 
+
 @app.post("/api/v0/games/<int:game_id>/players/<string:name>/abilities")
-def api_v0_queue_ability(game_id: int, name: str) -> ...:
+def api_v0_queue_ability(game_id: int, name: str) -> Any:
     """Queue an action.
-    
+
     Authorization: Player (Self), Moderator
-    
+
     Request Body:
     * `actions`: `object?`
         * (Action Id): `string[] | null` &mdash; Action targets
     * `shared_actions`: `object?`
         * (Action Id): `string[] | null` &mdash; Action targets
-    
+
     Status Codes:
     * 204 No Content
     * 400 Bad Request
@@ -626,8 +650,7 @@ def api_v0_queue_ability(game_id: int, name: str) -> ...:
         if target_list is None:
             # Remove action from queue
             prev_visit = next(
-                (v for v in game.queued_visits if v.actor is player and v.ability is ability),
-                None
+                (v for v in game.queued_visits if v.actor is player and v.ability is ability), None
             )
             if prev_visit is not None:
                 game.queued_visits.remove(prev_visit)
@@ -640,43 +663,61 @@ def api_v0_queue_ability(game_id: int, name: str) -> ...:
         for target_name in target_list:
             target = next((p for p in game.players if p.name == target_name), None)
             if target is None:
-                return {"message": f"'actions[{action_id!r}]' field contains invalid player name: {target_name}"}, 400
+                return {
+                    "message": f"'actions[{action_id!r}]' field contains invalid player name: {target_name}"
+                }, 400
             targets.append(target)
         if ability.phase is not None and ability.phase != game.phase:
-            return {"message": f"'actions[{action_id!r}]' field contains action with non-current phase"}, 400
+            return {
+                "message": f"'actions[{action_id!r}]' field contains action with non-current phase"
+            }, 400
         if not ability.check(game, player, targets):
-            return {"message": f"'actions[{action_id!r}]' field contains failed check with targets {target_list!r}"}, 400
+            return {
+                "message": f"'actions[{action_id!r}]' field contains failed check with targets {target_list!r}"
+            }, 400
         if ability.immediate:
-            ability.perform(game, player, targets, visit=m.Visit(
+            ability.perform(
+                game,
+                player,
+                targets,
+                visit=m.Visit(
+                    actor=player,
+                    targets=tuple(targets),
+                    ability=ability,
+                    ability_type=m.AbilityType.ACTION,
+                    game=game,
+                ),
+            )
+            continue
+        prev_visit = next(
+            (v for v in game.queued_visits if v.actor is player and v.ability is ability), None
+        )
+        if prev_visit is not None:
+            game.queued_visits.remove(prev_visit)
+        game.queued_visits.append(
+            m.Visit(
                 actor=player,
                 targets=tuple(targets),
                 ability=ability,
                 ability_type=m.AbilityType.ACTION,
-                game=game
-            ))
-            continue
-        prev_visit = next(
-            (v for v in game.queued_visits if v.actor is player and v.ability is ability),
-            None
+                game=game,
+            )
         )
-        if prev_visit is not None:
-            game.queued_visits.remove(prev_visit)
-        game.queued_visits.append(m.Visit(
-            actor=player,
-            targets=tuple(targets),
-            ability=ability,
-            ability_type=m.AbilityType.ACTION,
-            game=game
-        ))
     for action_id, target_list in body["shared_actions"].items():
         ability = next((a for a in player.shared_actions if a.id == action_id), None)
         if ability is None:
-            return {"message": f"'shared_actions[{action_id!r}]' field contains invalid action id"}, 400
+            return {
+                "message": f"'shared_actions[{action_id!r}]' field contains invalid action id"
+            }, 400
         if target_list is None:
             # Remove action from queue
             prev_visit = next(
-                (v for v in game.queued_visits if v.ability is ability and (not isinstance(v.ability, m.OwnedAbility) or v.ability.owner is ability.owner)),
-                None
+                (
+                    v
+                    for v in game.queued_visits
+                    if v.ability is ability
+                ),
+                None,
             )
             if prev_visit is not None:
                 game.queued_visits.remove(prev_visit)
@@ -684,58 +725,78 @@ def api_v0_queue_ability(game_id: int, name: str) -> ...:
         if not isinstance(target_list, list):
             return {"message": f"'shared_actions[{action_id!r}]' field is not a list"}, 400
         if not all(isinstance(target, str) for target in target_list):
-            return {"message": f"'shared_actions[{action_id!r}]' field contains non-string values"}, 400
+            return {
+                "message": f"'shared_actions[{action_id!r}]' field contains non-string values"
+            }, 400
         targets = []
         for target_name in target_list:
             target = next((p for p in game.players if p.name == target_name), None)
             if target is None:
-                return {"message": f"'shared_actions[{action_id!r}]' field contains invalid player name: {target_name}"}, 400
+                return {
+                    "message": f"'shared_actions[{action_id!r}]' field contains invalid player name: {target_name}"
+                }, 400
             targets.append(target)
         if ability.phase is not None and ability.phase != game.phase:
-            return {"message": f"'shared_actions[{action_id!r}]' field contains action with non-current phase"}, 400
+            return {
+                "message": f"'shared_actions[{action_id!r}]' field contains action with non-current phase"
+            }, 400
         if not ability.check(game, player, targets):
-            return {"message": f"'shared_actions[{action_id!r}]' field contains failed check with targets {target_list!r}"}, 400
+            return {
+                "message": f"'shared_actions[{action_id!r}]' field contains failed check with targets {target_list!r}"
+            }, 400
         if ability.immediate:
-            ability.perform(game, player, targets, visit=m.Visit(
+            ability.perform(
+                game,
+                player,
+                targets,
+                visit=m.Visit(
+                    actor=player,
+                    targets=tuple(targets),
+                    ability=ability,
+                    ability_type=m.AbilityType.SHARED_ACTION,
+                    game=game,
+                ),
+            )
+            continue
+        prev_visit = next(
+            (
+                v
+                for v in game.queued_visits
+                if v.ability is ability
+            ),
+            None,
+        )
+        if prev_visit is not None:
+            game.queued_visits.remove(prev_visit)
+        game.queued_visits.append(
+            m.Visit(
                 actor=player,
                 targets=tuple(targets),
                 ability=ability,
                 ability_type=m.AbilityType.SHARED_ACTION,
-                game=game
-            ))
-            continue
-        prev_visit = next(
-            (v for v in game.queued_visits if v.ability is ability and (not isinstance(v.ability, m.OwnedAbility) or v.ability.owner is ability.owner)),
-            None
+                game=game,
+            )
         )
-        if prev_visit is not None:
-            game.queued_visits.remove(prev_visit)
-        game.queued_visits.append(m.Visit(
-            actor=player,
-            targets=tuple(targets),
-            ability=ability,
-            ability_type=m.AbilityType.SHARED_ACTION,
-            game=game
-        ))
     return "", 204
 
+
 @app.get("/api/v0/games/<int:game_id>/players/<string:name>/messages")
-def api_v0_get_messages(game_id: int, name: str) -> ...:
+def api_v0_get_messages(game_id: int, name: str) -> Any:
     """Get a player's private messages (zero-indexed).
-    
+
     Authorization: Player (Self), Moderator
-    
+
     URL Parameters:
     * `start`: `int` (default: `0`)
     * `limit`: `int` (default: `25`)
-    
+
     Response Body:
     * `total_messages`: `int`
     * `messages`: `object[]`
         * `author`: `string`
         * `timestamp`: `int`
         * `content`: `string`
-    
+
     Status Codes:
     * 200 OK
     * 401 Unauthorized
@@ -769,19 +830,20 @@ def api_v0_get_messages(game_id: int, name: str) -> ...:
                 "timestamp": idx,
                 "content": msg.content,
             }
-            for idx, msg in enumerate(player.private_messages[start:start+limit])
-        ]
+            for idx, msg in enumerate(player.private_messages[start : start + limit])
+        ],
     }
 
+
 @app.post("/api/v0/games/<int:game_id>/players/<string:name>/messages")
-def api_v0_send_message(game_id: int, name: str) -> ...:
+def api_v0_send_message(game_id: int, name: str) -> Any:
     """Send a private message to a player.
-    
+
     Authorization: Player (Self), Moderator
-    
+
     Request Body:
     * `content`: `string`
-    
+
     Status Codes:
     * 204 No Content
     * 400 Bad Request
@@ -813,30 +875,34 @@ def api_v0_send_message(game_id: int, name: str) -> ...:
         return {"message": "Missing 'content' field"}, 400
     if not isinstance(body["content"], str):
         return {"message": "'content' field is not a string"}, 400
-    player.private_messages.send(auth_player.name if auth_player is not None else "Moderator", body["content"])
+    player.private_messages.send(
+        auth_player.name if auth_player is not None else "Moderator", body["content"]
+    )
+
 
 @app.get("/api/v0/games/<int:game_id>/chats")
-def api_v0_get_chats(game_id: int) -> ...:
+def api_v0_get_chats(game_id: int) -> Any:
     """Get an array of chats.
-    
+
     Returns `"chats"` field from using `GET /api/v0/games/{game_id}`.
     """
     if game_id not in games:
         return {"message": "Game not found"}, 404
     return api_v0_get_game(game_id)["chats"]
 
+
 @app.get("/api/v0/games/<int:game_id>/chats/<string:chat_id>")
-def api_v0_get_chat(game_id: int, chat_id: str) -> ...:
+def api_v0_get_chat(game_id: int, chat_id: str) -> Any:
     """Get a chat's data.
-    
+
     Authorization: None (Public Chats), Player (Read Perms), Moderator
-    
+
     Response Body:
     * `chat_id`: `string`
     * `read_perms`: `string[]`
     * `write_perms`: `string[]`
     * `total_messages`: `int`
-    
+
     Status Codes:
     * 200 OK
     * 404 Not Found &mdash; Returned in place of 401 or 403 for those without read permissions.
@@ -853,27 +919,22 @@ def api_v0_get_chat(game_id: int, chat_id: str) -> ...:
         return {"message": "Chat not found"}, 404
     return {
         "chat_id": chat_id,
-        "read_perms": [
-            p.name
-            for p in chat.read_perms(game)
-        ],
-        "write_perms": [
-            p.name
-            for p in chat.write_perms(game)
-        ],
-        "total_messages": len(chat)
+        "read_perms": [p.name for p in chat.read_perms(game)],
+        "write_perms": [p.name for p in chat.write_perms(game)],
+        "total_messages": len(chat),
     }
 
+
 @app.get("/api/v0/games/<int:game_id>/chats/<string:chat_id>/messages")
-def api_v0_get_chat_messages(game_id: int, chat_id: str) -> ...:
+def api_v0_get_chat_messages(game_id: int, chat_id: str) -> Any:
     """Get chat messages (zero-indexed).
-    
+
     Authorization: None (Public Chats), Player (Read Perms), Moderator
-    
+
     URL Parameters:
     * `start`: `int` (default: `0`)
     * `limit`: `int` (default: `25`)
-    
+
     Response Body:
     * `chat_id`: `string`
     * `total_messages`: `int`
@@ -881,7 +942,7 @@ def api_v0_get_chat_messages(game_id: int, chat_id: str) -> ...:
         * `author`: `string`
         * `timestamp`: `int`
         * `content`: `string`
-    
+
     Status Codes:
     * 200 OK
     * 404 Not Found &mdash; Returned in place of 401 or 403 for those without read permissions.
@@ -906,25 +967,22 @@ def api_v0_get_chat_messages(game_id: int, chat_id: str) -> ...:
         "chat_id": chat_id,
         "total_messages": len(chat),
         "messages": [
-            {
-                "author": msg.sender,
-                "timestamp": idx,
-                "content": msg.content
-            }
-            for idx, msg in enumerate(chat[start:start+limit])
+            {"author": msg.sender, "timestamp": idx, "content": msg.content}
+            for idx, msg in enumerate(chat[start : start + limit])
         ],
     }
 
+
 @app.post("/api/v0/games/<int:game_id>/chats/<string:chat_id>")
 @app.post("/api/v0/games/<int:game_id>/chats/<string:chat_id>/messages")
-def api_v0_send_chat_message(game_id: int, chat_id: str) -> ...:
+def api_v0_send_chat_message(game_id: int, chat_id: str) -> Any:
     """Send a chat message. Message is attributed to the authorized sender.
-    
+
     Authorization: Player (Write Perms), Moderator
-    
+
     Request Body:
     * `content`: `string`
-    
+
     Status Codes:
     * 204 No Content
     * 400 Bad Request
@@ -956,6 +1014,7 @@ def api_v0_send_chat_message(game_id: int, chat_id: str) -> ...:
     chat.send(player.name if player is not None else "Moderator", body["content"])
     return "", 204
 
+
 games: dict[int, Game] = {}
 game_count = count(0)
 
@@ -963,7 +1022,17 @@ with app.test_client() as client:
     client.post(
         "/api/v0/games",
         json={
-            "players": ["Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace", "Heidi", "Ivan"],
+            "players": [
+                "Alice",
+                "Bob",
+                "Charlie",
+                "David",
+                "Eve",
+                "Frank",
+                "Grace",
+                "Heidi",
+                "Ivan",
+            ],
             "roles": [
                 {"role": "Gunsmith", "alignment": "Town"},
                 {"role": "Doctor", "alignment": "Town"},
@@ -977,5 +1046,5 @@ with app.test_client() as client:
             ],
             "start_phase": "DAY",
             "mod_token": "__test__",
-        }
+        },
     )

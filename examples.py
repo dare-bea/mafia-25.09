@@ -2,11 +2,12 @@
 Simple Normal roles, abilities, and alignments.
 """
 
-from collections.abc import Sequence, Callable, Collection
+from abc import ABC, abstractmethod
+from collections.abc import Sequence, Callable, Collection, Generator
 from dataclasses import replace
 from itertools import product
-from typing import Any, Generator, TypeVar
-from abc import ABC, abstractmethod
+from typing import Any, TypeVar, get_args, get_origin, get_type_hints
+
 from mafia import (
     AbilityModifier,
     AbilityType,
@@ -21,6 +22,7 @@ from mafia import (
     Player,
     Visit,
     VisitStatus,
+    WinResult,
 )
 from nodes import nodes_in_cycles
 
@@ -61,6 +63,7 @@ def has_valid_targets(
             return True
     return False
 
+
 def get_valid_targets(
     ability: Ability, game: Game, actor: Player, is_passive: bool = False
 ) -> Generator[tuple[Player, ...], None, None]:
@@ -71,6 +74,7 @@ def get_valid_targets(
     for targets in product(game.players, repeat=ability.target_count):
         if ability.check(game, actor, targets):
             yield targets
+
 
 class Resolver:
     """Resolves visits in a game."""
@@ -258,13 +262,11 @@ class Kill(Ability):
     killer: str
 
     def check(self, game: Game, actor: Player, targets: Sequence[Player] | None = None) -> bool:
-        return (
-            super().check(game, actor, targets)
-            and (
-                targets is None
-                or all(t not in actor.known_players
-                       or t.alignment.id != actor.alignment.id
-                       for t in targets)
+        return super().check(game, actor, targets) and (
+            targets is None
+            or all(
+                t not in actor.known_players or t.alignment.id != actor.alignment.id
+                for t in targets
             )
         )
 
@@ -392,6 +394,7 @@ class Bodyguard(Role):
 
     class Bodyguard(ProtectiveAbility):
         """You may target another player to protect them from a single nightkill on that night. If you successfully protect another player, you will die in their place."""
+
         def block_visit(
             self, actor: Player, target: Player, blocked_visit: Visit, *, visit: Visit
         ) -> VisitStatus:
@@ -408,6 +411,7 @@ class Bulletproof(Role):
 
     class Bulletproof(ProtectiveAbility):
         """Any killing actions that target you will fail."""
+
         limit = None
 
     passives = (Bulletproof(),)
@@ -419,6 +423,7 @@ class Cop(Role):
 
     class Cop(InvestigativeAbility):
         """You may investigate another player to learn if they are Town or Not Town. If your action fails, you will receive 'No Result.'"""
+
         tags = frozenset({"investigate", "gun"})
 
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
@@ -436,6 +441,7 @@ class Doctor(Role):
 
     class Doctor(ProtectiveAbility):
         """You may target another player to protect them from a single nightkill on that night."""
+
         tags = frozenset({"protect", "mafia_no_gun"})
         limit = 1
 
@@ -447,6 +453,7 @@ class Friendly_Neighbor(Role):
 
     class Friendly_Neighbor(Ability):
         """You may target another player to inform them that you are aligned with the Town."""
+
         tags = frozenset({"inform"})
 
         def perform(
@@ -478,6 +485,7 @@ class Gunsmith(Role):
 
     class Gunsmith(InvestigativeAbility):
         """You may investigate another player to learn whether or not they have a gun. If your action fails, you will receive 'No Result.'. You can find an overview of which roles do and do not have guns [here](https://wiki.mafiascum.net/index.php?title=Gunsmith#Normal_version)."""
+
         tags = frozenset({"investigate", "gun"})
 
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
@@ -635,9 +643,7 @@ class Mason(Role):
             chat.participants.add(player)
         else:
             raise TypeError(f"Expected PrivateChat, got {type(chat)}.")
-        chat.send(
-            self.id, f"{player.name} is a {player.role_name}."
-        )
+        chat.send(self.id, f"{player.name} is a {player.role_name}.")
 
     tags = frozenset({"chat", "informed"})
 
@@ -681,9 +687,7 @@ class Neighborizer(Role):
                 chat.participants.add(target)
             else:
                 raise TypeError(f"Expected PrivateChat, got {type(chat)}.")
-            chat.send(
-                self.id, f"{target.name} has been added into the neighborhood."
-            )
+            chat.send(self.id, f"{target.name} has been added into the neighborhood.")
             return VisitStatus.SUCCESS
 
     def player_init(self, game: Game, player: Player) -> None:
@@ -972,7 +976,7 @@ class Companion(Role):
         for action in self.actions:
             if isinstance(action, Companion.Companion):
                 action.informed_player = value
-    
+
     @informed_player.deleter
     def informed_player(self) -> None:
         for action in self.actions:
@@ -1130,7 +1134,7 @@ def Jack_of_All_Trades(
     tags: frozenset[str] | None = None,
 ) -> type[Role]:
     """Has multiple pre-determined 1-Shot roles."""
-    
+
     oneshot = XShot(1)
 
     if roles is None:
@@ -1139,7 +1143,7 @@ def Jack_of_All_Trades(
 
     if id is None:
         id = "Jack of All Trades"
-    
+
     _id = id + " " + " ".join(r.id for r in roles)
 
     if tags is None:
@@ -1495,7 +1499,8 @@ class Traffic_Analyst(Role):
 
         def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
             has_private_chat = any(
-                target in chat.participants and len({p for p in chat.participants if p.is_alive}) > 1
+                target in chat.participants
+                and len({p for p in chat.participants if p.is_alive}) > 1
                 for id, chat in game.chats.items()
                 if isinstance(chat, PrivateChat)
                 and ("personal" not in visit.tags or not id.startswith("faction:"))
@@ -1923,9 +1928,7 @@ class Mafia(Faction):
             chat.participants.add(player)
         else:
             raise TypeError(f"Expected PrivateChat, got {type(chat)}.")
-        chat.send(
-            self.id, f"{player.name} is a {player.role_name}."
-        )
+        chat.send(self.id, f"{player.name} is a {player.role_name}.")
 
     shared_actions = (Mafia_Factional_Kill(),)
     tags = frozenset({"mafia", "chat", "informed"})
@@ -1948,6 +1951,12 @@ class Serial_Killer(Faction):
     class Serial_Killer_Factional_Kill(Kill):
         tags = frozenset({"kill", "factional_kill"})
 
+    def check_win(self, game: Game, player: Player) -> WinResult:
+        # Can win as normal or if everyone is dead (even if they aren't alive)
+        if not game.alive_players:
+            return WinResult.WIN
+        return super().check_win(game, player)
+
     actions = (Serial_Killer_Factional_Kill(),)
     tags = frozenset({"third_party"})
     role_names: dict[str, str] = {
@@ -1955,19 +1964,43 @@ class Serial_Killer(Faction):
     }
 
 
-ROLES: dict[str, type[Role]] = {
-    v.id: v
-    for v in vars().values()
-    if isinstance(v, type)
-    and issubclass(v, Role)
-    and v is not Role
-}
+# TYPE INDEXING #
 
-ALIGNMENTS: dict[str, type[Alignment]] = {
-    v.id: v
-    for v in vars().values()
-    if isinstance(v, type)
-    and issubclass(v, Alignment)
-    and v is not Alignment
-    and v is not Faction
-}
+ROLES = {}
+COMBINED_ROLES = {}
+ALIGNMENTS = {}
+MODIFIERS = {}
+
+# temporary variables, all deleted afterwards so it won't get exported
+variables = vars().copy()
+rt = None
+args = ()
+
+for name, obj in variables.items():
+    if not callable(obj) or getattr(obj, "__module__", None) != __name__:
+        continue
+    if isinstance(obj, type):
+        if issubclass(obj, Role):
+            ROLES[name] = obj
+        if issubclass(obj, Alignment):
+            ALIGNMENTS[name] = obj
+        if issubclass(obj, Modifier):
+            MODIFIERS[name] = obj
+    else:
+        rt = get_type_hints(obj).get("return", None)
+        if rt is not None and isinstance(rt, type):
+            if issubclass(rt, Role):
+                ROLES[name] = obj
+            if issubclass(rt, Alignment):
+                ALIGNMENTS[name] = obj
+            if issubclass(rt, Modifier):
+                MODIFIERS[name] = obj
+        if (
+            get_origin(rt) is type
+            and len(args := get_args(rt)) > 0
+            and isinstance(args[0], type)  #type: ignore[misc]
+            and issubclass(args[0], Role)  #type: ignore[misc]
+        ):
+            COMBINED_ROLES[name] = obj
+
+del variables, name, obj, rt, args

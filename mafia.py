@@ -33,6 +33,7 @@ class AbilityType(Enum):
     PASSIVE = auto()
     SHARED_ACTION = auto()
 
+
 def role_name(role: Role, alignment: Alignment) -> str:
     """
     Computes a role name from a role and alignment pair.
@@ -152,18 +153,6 @@ class Visit:
     def is_self_target(self) -> bool:
         return all(t is self.actor for t in self.targets)
 
-Owner = TypeVar("Owner", "Role", "Alignment", None)
-class OwnedAbility(Ability):
-    def __init__(self, *args: Any, owner: Owner = None, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self.owner = owner
-
-    @classmethod
-    def from_ability(cls, ability: Ability, owner: Owner = None) -> Self:
-        self = OwnedAbility.__new__(cls) # don't call __init__
-        self.__dict__.update(ability.__dict__)
-        self.owner = owner
-        return self
 
 class Role:
     def __init__(
@@ -476,9 +465,7 @@ class Chat(list[ChatMessage]):
         super().__init__(*args, **kwargs)
 
     def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}({super().__repr__()})"
-        )
+        return f"{self.__class__.__name__}({super().__repr__()})"
 
     def has_read_perms(self, game: Game, player: Player | None) -> bool:
         return True
@@ -497,7 +484,9 @@ class Chat(list[ChatMessage]):
 
 
 class PrivateChat(Chat):
-    def __init__(self, *args: Any, participants: Iterable[Player] | None = None, **kwargs: Any) -> None:
+    def __init__(
+        self, *args: Any, participants: Iterable[Player] | None = None, **kwargs: Any
+    ) -> None:
         super().__init__(*args, **kwargs)
         self.participants = set() if participants is None else set(participants)
 
@@ -508,26 +497,29 @@ class PrivateChat(Chat):
         return player is not None and player in self.participants and player in game.alive_players
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({super().__repr__()}, participants={self.participants!r})"
+        return (
+            f"{self.__class__.__name__}({super().__repr__()}, participants={self.participants!r})"
+        )
 
     participants: set[Player]
+
 
 @dataclass(eq=False)
 class Player:
     def __post_init__(self) -> None:
         self.private_messages.participants.add(self)
         for ability in self.role.actions:
-            self.actions.append(OwnedAbility.from_ability(ability, self.role))
+            self.actions.append(ability)
         for ability in self.role.passives:
-            self.passives.append(OwnedAbility.from_ability(ability, self.role))
+            self.passives.append(ability)
         for ability in self.role.shared_actions:
-            self.shared_actions.append(OwnedAbility.from_ability(ability, self.role))
+            self.shared_actions.append(ability)
         for ability in self.alignment.actions:
-            self.actions.append(OwnedAbility.from_ability(ability, self.alignment))
+            self.actions.append(ability)
         for ability in self.alignment.passives:
-            self.passives.append(OwnedAbility.from_ability(ability, self.alignment))
+            self.passives.append(ability)
         for ability in self.alignment.shared_actions:
-            self.shared_actions.append(OwnedAbility.from_ability(ability, self.alignment))
+            self.shared_actions.append(ability)
 
     # def __repr__(self) -> str:
     #     return f"Player({self.name!r}, {self.role!r}, {self.alignment!r}, private_messages={self.private_messages!r})"
@@ -544,10 +536,10 @@ class Player:
     alignment: Alignment
     private_messages: PrivateChat = field(default_factory=PrivateChat, kw_only=True)
     death_causes: list[str] = field(default_factory=list, kw_only=True)
-    actions: list[OwnedAbility] = field(default_factory=list, kw_only=True)
-    passives: list[OwnedAbility] = field(default_factory=list, kw_only=True)
-    shared_actions: list[OwnedAbility] = field(default_factory=list, kw_only=True)
-    uses: dict[OwnedAbility, int] = field(default_factory=dict, kw_only=True)
+    actions: list[Ability] = field(default_factory=list, kw_only=True)
+    passives: list[Ability] = field(default_factory=list, kw_only=True)
+    shared_actions: list[Ability] = field(default_factory=list, kw_only=True)
+    uses: dict[Ability, int] = field(default_factory=dict, kw_only=True)
     action_history: list[Visit] = field(default_factory=list, kw_only=True)
     known_players: set[Player] = field(default_factory=set, kw_only=True)
 
