@@ -1010,34 +1010,3 @@ def api_v0_send_chat_message(game_id: int, chat_id: str) -> Any:
 
 games: dict[int, Game] = {}
 game_count = count(0)
-
-with app.test_client() as client:
-    client.post(
-        "/api/v0/games",
-        json={
-            "players": [
-                "Alice",
-                "Bob",
-                "Charlie",
-                "David",
-                "Eve",
-                "Frank",
-                "Grace",
-                "Heidi",
-                "Ivan",
-            ],
-            "roles": [
-                {"role": "Gunsmith", "alignment": "Town"},
-                {"role": "Doctor", "alignment": "Town"},
-                {"role": "Cop", "alignment": "Town"},
-                {"role": "Rolestopper", "alignment": "Town"},
-                {"role": "Bulletproof", "alignment": "Town"},
-                {"role": "Vanilla", "alignment": "Town"},
-                {"role": "Vanilla", "alignment": "Serial Killer"},
-                {"role": "Roleblocker", "alignment": "Mafia"},
-                {"role": "Vanilla", "alignment": "Mafia"},
-            ],
-            "start_phase": "DAY",
-            "mod_token": "__test__",
-        },
-    )
