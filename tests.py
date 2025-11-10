@@ -646,7 +646,7 @@ def main() -> None:
     except ImportError:
         print("Could not find module 'mypy.api'. Skipping type-checking...")
     else:
-        for x in range(10, 14):
+        for x in range(11, 15):
             print(f"Type-checking Python 3.{x}:")
             result = mypy.api.run(["--python-version", f"3.{x}", "--strict", "--pretty", str(DIR)])
             if result[0]:
@@ -654,7 +654,6 @@ def main() -> None:
 
             if result[1]:
                 print(result[1].rstrip(), file=stderr)
-
 
 if __name__ == "__main__":
     main()

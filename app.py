@@ -17,7 +17,7 @@ import examples as ex
 
 
 class Game(m.Game):
-    def __init__(self, *args, mod_token: str | None = None, **kwargs) -> None:
+    def __init__(self, *args: Any, mod_token: str | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         if mod_token is None:
             mod_token = token_urlsafe(16)
