@@ -262,11 +262,13 @@ class Kill(Ability):
     killer: str
 
     def check(self, game: Game, actor: Player, targets: Sequence[Player] | None = None) -> bool:
-        return super().check(game, actor, targets) and (
-            targets is None
-            or all(
-                t not in actor.known_players or t.alignment.id != actor.alignment.id
-                for t in targets
+        return (
+            super().check(game, actor, targets)
+            and (
+                targets is None
+                or all(t not in actor.known_players
+                       or t.alignment.id != actor.alignment.id
+                       for t in targets)
             )
         )
 
@@ -994,7 +996,7 @@ class Companion(Role):
         informed_player: Player | None = None,
     ):
         super().__init__(id, actions, passives, shared_actions, tags, is_adjective)
-        self.actions = (Companion.Companion(informed_player),)
+        self.actions: tuple[Companion.Companion] = (Companion.Companion(informed_player),)
 
 
 class Detective(Role):
