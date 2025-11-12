@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 import re
 from itertools import count
 import random
@@ -164,7 +165,7 @@ def api_v0_create_game() -> Any:
 
     # Create game
     role_list = []
-    roles: dict[str, type[m.Role]] = {}
+    roles: dict[str, type[m.Role] | Callable[..., m.Role]] = {}
     alignments: dict[str, m.Alignment] = {}
 
     for role_align in body["roles"]:

@@ -1986,10 +1986,10 @@ class Serial_Killer(Faction):
 
 # TYPE INDEXING #
 
-ROLES: dict[str, Callable] = {}
-COMBINED_ROLES: dict[str, Callable] = {}
-ALIGNMENTS: dict[str, Callable] = {}
-MODIFIERS: dict[str, Callable] = {}
+ROLES: dict[str, type[Role] | Callable[..., Role]] = {}
+COMBINED_ROLES: dict[str, Callable[..., type[Role]]] = {}
+ALIGNMENTS: dict[str, type[Alignment] | Callable[..., Alignment]] = {}
+MODIFIERS: dict[str, type[Modifier] | Callable[..., Modifier]] = {}
 
 # temporary variables, all deleted afterwards so it won't get exported
 variables = vars().copy()

@@ -1,3 +1,4 @@
+from sys import stdout
 from typing import Callable
 import mafia as m
 from mafia import AbilityType as AT
@@ -597,37 +598,51 @@ TESTS: dict[str, Callable[[], None]] = {
 }
 
 
-def main() -> None:
+def main() -> int:
     from os import makedirs
     from sys import stderr, argv
     from contextlib import redirect_stdout
     from pathlib import Path
     from traceback import print_exception
 
+    verbose = "--verbose" in argv or "-v" in argv
+    mypy_abort_if_error = "--mypy-abort" in argv or "-ma" in argv
+    mypy_verbose = "--mypy-verbose" in argv or "-mv" in argv
+    use_mypy = "--mypy" in argv or "-m" in argv or mypy_abort_if_error or mypy_verbose
+    mypy_verbose = mypy_verbose or verbose
+    if "--all" in argv or "-a" in argv:
+        verbose = True
+        use_mypy = True
+        mypy_verbose = True
+
     successes: int = 0
     failed_tests: list[str] = []
     DIR = Path(__file__).parent
     makedirs(DIR / "test_results", exist_ok=True)
     for test_name, test_func in TESTS.items():
-        print(f"## TESTING: {test_name}() ##")
+        if verbose:
+            print(f"## TESTING: {test_name}() ##")
         try:
             with open(DIR / "test_results" / f"{test_name}.log", "w") as f:
                 with redirect_stdout(f):
                     test_func()
         except Exception as e:
-            with open(DIR / "test_results" / f"{test_name}.log", "r") as f:
-                print(f.read())
+            if verbose:
+                with open(DIR / "test_results" / f"{test_name}.log", "r") as f:
+                    print(f.read())
+                print_exception(e)
             with open(DIR / "test_results" / f"{test_name}.log", "a") as f:
                 print_exception(e, file=f)
-            print_exception(e)
             print(f"## TEST {test_name} FAILED ##")
             failed_tests.append(test_name)
         else:
-            with open(DIR / "test_results" / f"{test_name}.log", "r") as f:
-                print(f.read())
+            if verbose:
+                with open(DIR / "test_results" / f"{test_name}.log", "r") as f:
+                    print(f.read())
             print(f"## TEST {test_name} PASSED ##")
             successes += 1
-        print()
+        if verbose:
+            print()
 
     print(f"{successes}/{len(TESTS)} tests succeeded! ({successes / len(TESTS):.1%})")
     if failed_tests:
@@ -636,22 +651,31 @@ def main() -> None:
             print(f"    {test_name}", file=stderr)
     print()
 
-    if "--no-mypy" in argv or "-M" in argv:
-        return
+    if use_mypy:
+        try:
+            import mypy.api
+        except ImportError:
+            print("Could not find module 'mypy.api'. Skipping type-checking...")
+        else:
+            for x in range(11, 15):
+                print(f"Type-checking Python 3.{x}:")
+                result = mypy.api.run(
+                    ["--python-version", f"3.{x}", "--strict", "--pretty", str(DIR)] if mypy_verbose else
+                    ["--python-version", f"3.{x}", "--strict", "--no-pretty", str(DIR)]
+                )
+                if result[0]:
+                    print(result[0].rstrip(), file=stdout)
+    
+                if result[1]:
+                    print(result[1].rstrip(), file=stderr)
 
-    try:
-        import mypy.api
-    except ImportError:
-        print("Could not find module 'mypy.api'. Skipping type-checking...")
-    else:
-        for x in range(11, 15):
-            print(f"Type-checking Python 3.{x}:")
-            result = mypy.api.run(["--python-version", f"3.{x}", "--strict", "--pretty", str(DIR)])
-            if result[0]:
-                print(result[0].rstrip())
+                if result[2] and mypy_abort_if_error:
+                    print("Type-checking failed.")
+                    return 1
 
-            if result[1]:
-                print(result[1].rstrip(), file=stderr)
+    if successes != len(TESTS):
+        return 1
+    return 0
 
 if __name__ == "__main__":
-    main()
+    exit(main())
