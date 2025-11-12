@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence, Iterator
 from types import EllipsisType
-from typing import Any, Self, TypeGuard, TypeVar, cast
+from typing import Any, Literal, Self, TypeGuard, TypeVar, cast
 from enum import Enum, auto, IntEnum
 from dataclasses import InitVar, dataclass, field
 
@@ -276,9 +276,13 @@ class Alignment:
         passives: tuple[Ability, ...] | None = None,
         shared_actions: tuple[Ability, ...] | None = None,
         tags: frozenset[str] | None = None,
-        demonym: str | None | EllipsisType = ...,
+        demonym: str | Literal[''] | None = None,
         role_names: dict[str, str] | None = None,
     ):
+        """
+        Set `demonym` to `''` to disable the default demonym.
+        `demonym` and `role_names` support format strings, passing `role` and `alignment`.
+        """
         if id is not None:
             self.id = id
         if actions is not None:
@@ -289,7 +293,7 @@ class Alignment:
             self.shared_actions = shared_actions
         if tags is not None:
             self.tags = tags
-        if demonym is not ...:
+        if demonym is not None:
             self.demonym = demonym
         if role_names is not None:
             self.role_names = role_names
@@ -320,7 +324,7 @@ class Alignment:
     passives: tuple[Ability, ...] = ()
     shared_actions: tuple[Ability, ...] = ()
     tags: frozenset[str] = frozenset()
-    demonym: str | None = None
+    demonym: str | Literal[''] = ''
     role_names: dict[str, str] = {}
 
     def check_win(self, game: Game, player: Player) -> WinResult:

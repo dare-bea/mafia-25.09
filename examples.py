@@ -996,7 +996,7 @@ class Companion(Role):
         informed_player: Player | None = None,
     ):
         super().__init__(id, actions, passives, shared_actions, tags, is_adjective)
-        self.actions: tuple[Companion.Companion] = (Companion.Companion(informed_player),)
+        self.actions = (Companion.Companion(informed_player),)
 
 
 class Detective(Role):
@@ -1131,7 +1131,7 @@ class Hider(Role):
 
 
 def Jack_of_All_Trades(
-    roles: tuple[type[Role], ...] | None = None,
+    *roles: type[Role],
     id: str | None = None,
     tags: frozenset[str] | None = None,
 ) -> type[Role]:
@@ -1139,7 +1139,7 @@ def Jack_of_All_Trades(
 
     oneshot = XShot(1)
 
-    if roles is None:
+    if not roles:
         roles = (Cop, Vigilante, Doctor, Roleblocker)
     _roles = (oneshot(r) for r in roles)
 
@@ -1968,15 +1968,17 @@ class Serial_Killer(Faction):
 
 # TYPE INDEXING #
 
-ROLES = {}
-COMBINED_ROLES = {}
-ALIGNMENTS = {}
-MODIFIERS = {}
+ROLES: dict[str, Callable] = {}
+COMBINED_ROLES: dict[str, Callable] = {}
+ALIGNMENTS: dict[str, Callable] = {}
+MODIFIERS: dict[str, Callable] = {}
 
 # temporary variables, all deleted afterwards so it won't get exported
 variables = vars().copy()
 rt = None
 args = ()
+name = ""
+obj = None
 
 for name, obj in variables.items():
     if not callable(obj) or getattr(obj, "__module__", None) != __name__:

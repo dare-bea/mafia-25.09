@@ -348,10 +348,8 @@ def test_jack_of_all_trades() -> None:
     game = m.Game(1, m.Phase.NIGHT)
 
     joat = examples.Jack_of_All_Trades(
-        (
-            examples.Cop,
-            examples.Doctor,
-        )
+        examples.Cop,
+        examples.Doctor,
     )
 
     alice = m.Player("Alice", joat(), town)

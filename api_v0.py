@@ -6,15 +6,14 @@ import random
 from secrets import token_urlsafe
 from typing import Any
 
-from flask import Flask, render_template_string, request
-from markupsafe import Markup
+from flask import Blueprint, request
+from markupsafe import escape, Markup
 from werkzeug.datastructures import Headers
 
 import mafia as m
 import examples as ex
 
 # CUSTOM EXTENSIONS #
-
 
 class Game(m.Game):
     def __init__(self, *args: Any, mod_token: str | None = None, **kwargs: Any) -> None:
@@ -28,8 +27,7 @@ class Game(m.Game):
 
 r = ex.Resolver()
 
-# JINJA2 HELPERS #
-
+# HELPER FUNCTIONS #
 
 def slugify(obj: object) -> str:
     return re.sub(r"\s", "-", str(obj))
@@ -37,26 +35,13 @@ def slugify(obj: object) -> str:
 
 def role(player: m.Player) -> Markup:
     return Markup(
-        render_template_string(
-            '<span class="role_name Alignment-{{ player.alignment |e|s }}">'
-            "{{ player.role_name |e}}</span>",
-            player=player,
-        )
+        f'<span class="role_name Alignment-{slugify(escape(player.alignment))}">'
+        f"{escape(player.role_name)}</span>",
     )
-
-
-app = Flask(__name__)
-
-app.jinja_env.filters.update(
-    dict(
-        s=slugify,
-        slugify=slugify,
-        role=role,
-    )
-)
 
 # API V0 ENDPOINTS #
 
+api = Blueprint("api_v0", __name__, url_prefix="/api/v0")
 
 def get_permissions(game: Game, headers: Headers) -> tuple[str | None, m.Player | None]:
     mod_token: str | None = headers.get("Authorization-Mod-Token")
@@ -65,7 +50,7 @@ def get_permissions(game: Game, headers: Headers) -> tuple[str | None, m.Player 
     return mod_token, player
 
 
-@app.get("/api/v0/games")
+@api.get("/games")
 def api_v0_games() -> Any:
     """
     Get a list of games.
@@ -95,7 +80,7 @@ def api_v0_games() -> Any:
     }
 
 
-@app.post("/api/v0/games")
+@api.post("/games")
 def api_v0_create_game() -> Any:
     """Create a new game.
 
@@ -218,7 +203,7 @@ def api_v0_create_game() -> Any:
     return {"game_id": id, "mod_token": game.mod_token}, 201
 
 
-@app.get("/api/v0/games/<int:id>")
+@api.get("/games/<int:id>")
 def api_v0_get_game(id: int) -> Any:
     """Get game overview.
 
@@ -285,7 +270,7 @@ def api_v0_get_game(id: int) -> Any:
     }
 
 
-@app.put("/api/v0/games/<int:id>")
+@api.put("/games/<int:id>")
 def api_v0_update_game(id: int) -> Any:
     """Update game data.
 
@@ -339,7 +324,7 @@ def api_v0_update_game(id: int) -> Any:
     return "", 204
 
 
-@app.patch("/api/v0/games/<int:id>")
+@api.patch("/games/<int:id>")
 def api_v0_patch_game(id: int) -> Any:
     """Update game data.
 
@@ -386,18 +371,18 @@ def api_v0_patch_game(id: int) -> Any:
     return "", 204
 
 
-@app.get("/api/v0/games/<int:game_id>/players")
+@api.get("/games/<int:game_id>/players")
 def api_v0_get_players(game_id: int) -> Any:
     """Get an array of players.
 
-    Returns `"players"` field from using `GET /api/v0/games/{game_id}`."""
+    Returns `"players"` field from using `GET /games/{game_id}`."""
     if game_id not in games:
         return {"message": "Game not found"}, 404
 
     return api_v0_get_game(game_id)["players"]
 
 
-@app.get("/api/v0/games/<int:game_id>/players/<string:name>")
+@api.get("/games/<int:game_id>/players/<string:name>")
 def api_v0_get_player(game_id: int, name: str) -> Any:
     """Get player-specific information.
 
@@ -483,7 +468,7 @@ def api_v0_get_player(game_id: int, name: str) -> Any:
     }
 
 
-@app.get("/api/v0/games/<int:game_id>/players/<string:name>/abilities")
+@api.get("/games/<int:game_id>/players/<string:name>/abilities")
 def api_v0_get_abilities(game_id: int, name: str) -> Any:
     """Get a list of abilities a player has.
 
@@ -597,7 +582,7 @@ def api_v0_get_abilities(game_id: int, name: str) -> Any:
     }
 
 
-@app.post("/api/v0/games/<int:game_id>/players/<string:name>/abilities")
+@api.post("/games/<int:game_id>/players/<string:name>/abilities")
 def api_v0_queue_ability(game_id: int, name: str) -> Any:
     """Queue an action.
 
@@ -773,7 +758,7 @@ def api_v0_queue_ability(game_id: int, name: str) -> Any:
     return "", 204
 
 
-@app.get("/api/v0/games/<int:game_id>/players/<string:name>/messages")
+@api.get("/games/<int:game_id>/players/<string:name>/messages")
 def api_v0_get_messages(game_id: int, name: str) -> Any:
     """Get a player's private messages (zero-indexed).
 
@@ -828,7 +813,7 @@ def api_v0_get_messages(game_id: int, name: str) -> Any:
     }
 
 
-@app.post("/api/v0/games/<int:game_id>/players/<string:name>/messages")
+@api.post("/games/<int:game_id>/players/<string:name>/messages")
 def api_v0_send_message(game_id: int, name: str) -> Any:
     """Send a private message to a player.
 
@@ -873,18 +858,18 @@ def api_v0_send_message(game_id: int, name: str) -> Any:
     )
 
 
-@app.get("/api/v0/games/<int:game_id>/chats")
+@api.get("/games/<int:game_id>/chats")
 def api_v0_get_chats(game_id: int) -> Any:
     """Get an array of chats.
 
-    Returns `"chats"` field from using `GET /api/v0/games/{game_id}`.
+    Returns `"chats"` field from using `GET /games/{game_id}`.
     """
     if game_id not in games:
         return {"message": "Game not found"}, 404
     return api_v0_get_game(game_id)["chats"]
 
 
-@app.get("/api/v0/games/<int:game_id>/chats/<string:chat_id>")
+@api.get("/games/<int:game_id>/chats/<string:chat_id>")
 def api_v0_get_chat(game_id: int, chat_id: str) -> Any:
     """Get a chat's data.
 
@@ -918,7 +903,7 @@ def api_v0_get_chat(game_id: int, chat_id: str) -> Any:
     }
 
 
-@app.get("/api/v0/games/<int:game_id>/chats/<string:chat_id>/messages")
+@api.get("/games/<int:game_id>/chats/<string:chat_id>/messages")
 def api_v0_get_chat_messages(game_id: int, chat_id: str) -> Any:
     """Get chat messages (zero-indexed).
 
@@ -966,8 +951,8 @@ def api_v0_get_chat_messages(game_id: int, chat_id: str) -> Any:
     }
 
 
-@app.post("/api/v0/games/<int:game_id>/chats/<string:chat_id>")
-@app.post("/api/v0/games/<int:game_id>/chats/<string:chat_id>/messages")
+@api.post("/games/<int:game_id>/chats/<string:chat_id>")
+@api.post("/games/<int:game_id>/chats/<string:chat_id>/messages")
 def api_v0_send_chat_message(game_id: int, chat_id: str) -> Any:
     """Send a chat message. Message is attributed to the authorized sender.
 
