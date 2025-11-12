@@ -1610,7 +1610,25 @@ class XShot(AbilityModifier):
 
     def modify_ability(self, ability: type[Ability]) -> type[Ability]:
         if issubclass(ability, XShot.XShotPrototype):
-            raise TypeError(f"{ability} is already X-Shot.")
+            if ability.max_uses <= self.max_uses:
+                return type(
+                    f"{self!r}({ability.__name__})",
+                    (ability,),
+                    dict(
+                        id=ability.id,
+                        max_uses=ability.max_uses,
+                        tags=ability.tags | self.tags,
+                    )
+                )
+            return type(
+                f"{self!r}({ability.__name__})",
+                (ability,),
+                dict(
+                    id=ability.id,
+                    max_uses=self.max_uses,
+                    tags=ability.tags | self.tags,
+                )
+            )
 
         def check(
             method_self: XShot.XShotPrototype,
