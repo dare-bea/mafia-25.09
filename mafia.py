@@ -4,12 +4,11 @@ Mafia game framework.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence, Iterator
+from collections.abc import Callable, Iterable, Sequence, Iterator
 from types import EllipsisType
-from typing import Any, TypeGuard, TypeVar, cast
+from typing import Any, Self, TypeGuard, TypeVar, cast
 from enum import Enum, auto, IntEnum
 from dataclasses import InitVar, dataclass, field
-from abc import ABC, abstractmethod
 
 
 class VisitStatus(IntEnum):
@@ -69,6 +68,8 @@ class Ability:
     def __init_subclass__(cls) -> None:
         if "id" not in cls.__dict__:
             cls.id = cls.__name__.replace("_", " ")
+        if "description" not in cls.__dict__ and cls.__doc__ is not None:
+            cls.description = cls.__doc__.strip()
 
     def __str__(self) -> str:
         return self.id
@@ -84,6 +85,7 @@ class Ability:
         )
 
     id: str
+    description: str | None = None  # Description of the ability.
     player_inputs_types: tuple[type, ...] = ()  # Input types for player input validation.
     tags: frozenset[str] = frozenset()
 
@@ -210,6 +212,7 @@ class Role:
     ) -> TypeGuard[
         Role | str | type[Role] | Modifier | type[Modifier] | Callable[..., type[Role]]
     ]:
+        """Check if this role is the given role."""
         if isinstance(role, str):
             return self.id == role or role in self.modifiers
         if isinstance(role, Role):
@@ -265,7 +268,7 @@ class Role:
         return CombinedRole
 
 
-class Alignment(ABC):
+class Alignment:
     def __init__(
         self,
         id: str | None = None,
@@ -458,9 +461,40 @@ class ChatMessage:
 
 
 class Chat(list[ChatMessage]):
-    def __init__(self, *args: Any, participants: set[Player] | None = None, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.participants = set() if participants is None else participants
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({super().__repr__()})"
+
+    def has_read_perms(self, game: Game, player: Player | None) -> bool:
+        return True
+
+    def has_write_perms(self, game: Game, player: Player | None) -> bool:
+        return player is not None and player in game.alive_players
+
+    def read_perms(self, game: Game) -> Iterator[Player]:
+        return filter(lambda p: self.has_read_perms(game, p), game.players)
+
+    def write_perms(self, game: Game) -> Iterator[Player]:
+        return filter(lambda p: self.has_write_perms(game, p), game.players)
+
+    def send(self, sender: Player | str, content: str) -> None:
+        self.append(ChatMessage(sender, content))
+
+
+class PrivateChat(Chat):
+    def __init__(
+        self, *args: Any, participants: Iterable[Player] | None = None, **kwargs: Any
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.participants = set() if participants is None else set(participants)
+
+    def has_read_perms(self, game: Game, player: Player | None) -> bool:
+        return player is not None and player in self.participants
+
+    def has_write_perms(self, game: Game, player: Player | None) -> bool:
+        return player is not None and player in self.participants and player in game.alive_players
 
     def __repr__(self) -> str:
         return (
@@ -468,9 +502,6 @@ class Chat(list[ChatMessage]):
         )
 
     participants: set[Player]
-
-    def send(self, sender: Player | str, content: str) -> None:
-        self.append(ChatMessage(sender, content))
 
 
 @dataclass(eq=False)
@@ -503,7 +534,7 @@ class Player:
     name: str
     role: Role
     alignment: Alignment
-    private_messages: Chat = field(default_factory=Chat, kw_only=True)
+    private_messages: PrivateChat = field(default_factory=PrivateChat, kw_only=True)
     death_causes: list[str] = field(default_factory=list, kw_only=True)
     actions: list[Ability] = field(default_factory=list, kw_only=True)
     passives: list[Ability] = field(default_factory=list, kw_only=True)

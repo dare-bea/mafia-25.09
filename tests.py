@@ -8,9 +8,7 @@ from pprint import pprint
 
 class PrintResolver(examples.Resolver):
     def resolve_visit(self, game: m.Game, visit: m.Visit) -> int:
-        resolved_visits = set(v for v in game.visits if v.status is VS.PENDING) - {
-            visit
-        }
+        resolved_visits = set(v for v in game.visits if v.status is VS.PENDING) - {visit}
 
         result = super().resolve_visit(game, visit)
 
@@ -284,8 +282,10 @@ def test_investigative_fail() -> None:
     print()
     pprint(game)
     print(bob.private_messages)
-    
-    assert bob.private_messages[0].content == "Your ability failed, and you did not recieve a result.", "Bob's Cop did not fail."
+
+    assert (
+        bob.private_messages[0].content == "Your ability failed, and you did not recieve a result."
+    ), "Bob's Cop did not fail."
 
 
 def test_ascetic() -> None:
@@ -336,7 +336,9 @@ def test_detective() -> None:
     pprint(game)
     print(alice.private_messages)
 
-    assert alice.private_messages[0].content == "Eve has tried to kill someone!", "Detective did not detect kill."
+    assert alice.private_messages[0].content == "Eve has tried to kill someone!", (
+        "Detective did not detect kill."
+    )
 
 
 def test_jack_of_all_trades() -> None:
@@ -345,7 +347,12 @@ def test_jack_of_all_trades() -> None:
     mafia = examples.Mafia()
     game = m.Game(1, m.Phase.NIGHT)
 
-    joat = examples.Jack_of_All_Trades((examples.Cop, examples.Doctor,))
+    joat = examples.Jack_of_All_Trades(
+        (
+            examples.Cop,
+            examples.Doctor,
+        )
+    )
 
     alice = m.Player("Alice", joat(), town)
     bob = m.Player("Bob", examples.Vanilla(), town)
@@ -423,9 +430,15 @@ def test_traffic_analyst() -> None:
     pprint(game)
 
     print(alice.private_messages)
-    assert alice.private_messages[0].content == "Bob can communicate with other players privately!", "Bob can't communicate privately."
-    assert alice.private_messages[1].content == "Dave can communicate with other players privately!", "Dave can't communicate privately."
-    assert alice.private_messages[2].content == "Eve cannot communicate with other players privately.", "Eve can communicate privately."
+    assert (
+        alice.private_messages[0].content == "Bob can communicate with other players privately!"
+    ), "Bob can't communicate privately."
+    assert (
+        alice.private_messages[1].content == "Dave can communicate with other players privately!"
+    ), "Dave can't communicate privately."
+    assert (
+        alice.private_messages[2].content == "Eve cannot communicate with other players privately."
+    ), "Eve can communicate privately."
 
 
 def test_universal_backup() -> None:
@@ -478,7 +491,7 @@ def test_activated() -> None:
     r.resolve_game(game)
     print()
     pprint(game)
-    
+
     assert alice.is_alive, "Alice is dead, expected Bulletproof to protect."
     assert not bob.is_alive, "Bob is alive, expected Bulletproof to not be activated."
 
@@ -494,7 +507,7 @@ def test_ninja() -> None:
     eve = m.Player("Eve", examples.Ninja(), mafia)
 
     game.add_player(alice, bob, eve)
-    
+
     r.print_players(game)
     r.add_passives(game)
     game.visits.append(r.make_visit(game, eve, (eve,), AT.ACTION, 0))
@@ -505,7 +518,9 @@ def test_ninja() -> None:
     pprint(game)
 
     print(alice.private_messages)
-    assert alice.private_messages[0].content == "Bob was not targeted by anyone.", "Watcher erroneously detected Ninja."
+    assert alice.private_messages[0].content == "Bob was not targeted by anyone.", (
+        "Watcher erroneously detected Ninja."
+    )
 
 
 def test_personal() -> None:
@@ -530,7 +545,9 @@ def test_personal() -> None:
     pprint(game)
 
     print(alice.private_messages)
-    assert alice.private_messages[0].content == "Bob was not targeted by anyone.", "Watcher erroneously detected factional kill."
+    assert alice.private_messages[0].content == "Bob was not targeted by anyone.", (
+        "Watcher erroneously detected factional kill."
+    )
 
 
 def test_combine() -> None:
@@ -554,7 +571,10 @@ def test_combine() -> None:
     pprint(game)
 
     assert alice.is_alive, "Alice is dead, expected Bulletproof to protect."
-    assert alice.private_messages[0].content == "Eve is not aligned with the Town!.", "Cop erroneously detected Town."
+    assert alice.private_messages[0].content == "Eve is not aligned with the Town!.", (
+        "Cop erroneously detected Town."
+    )
+
 
 # DO TESTS #
 
@@ -626,7 +646,7 @@ def main() -> None:
     except ImportError:
         print("Could not find module 'mypy.api'. Skipping type-checking...")
     else:
-        for x in range(10, 14):
+        for x in range(11, 15):
             print(f"Type-checking Python 3.{x}:")
             result = mypy.api.run(["--python-version", f"3.{x}", "--strict", "--pretty", str(DIR)])
             if result[0]:
@@ -634,7 +654,6 @@ def main() -> None:
 
             if result[1]:
                 print(result[1].rstrip(), file=stderr)
-
 
 if __name__ == "__main__":
     main()
