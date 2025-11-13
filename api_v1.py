@@ -129,23 +129,23 @@ class GameCreateResponseModel(BaseModel):
     id: int
     mod_token: str
 
-class PlayerModel(BaseModel):
+class ShortPlayerModel(BaseModel):
     name: str
     is_alive: bool
     role_name: str | None = None
     role: str | None = None
     alignment: str | None = None
 
-class ChatModel(BaseModel):
+class ShortChatModel(BaseModel):
     id: str
-    message_count: int
+    total_messages: int
 
 class GameResponseModel(BaseModel):
     id: int
     day_no: int
     phase: m.Phase
-    players: list[PlayerModel]
-    chats: list[ChatModel]
+    players: list[ShortPlayerModel]
+    chats: list[ShortChatModel]
 
 class GamePutRequestModel(BaseModel):
     day_no: int | None = None
@@ -157,6 +157,50 @@ class GamePatchRequestModel(BaseModel):
         "resolve",
         "next_phase",
     ]]
+
+class PlayerRAModel(BaseModel):
+    id: str
+    actions: list[str]
+    passives: list[str]
+    shared_actions: list[str]
+
+class PlayerResponseModel(BaseModel):
+    name: str
+    is_alive: bool
+    role_name: str
+    role: PlayerRAModel
+    alignment: PlayerRAModel
+    known_players: list[ShortPlayerModel]
+    total_private_messages: int
+    chats: list[ShortChatModel]
+
+class PlayerAbilitiesActionModel(BaseModel):
+    id: str
+    phase: m.Phase | None = None
+    immediate: bool
+    target_count: int
+    targets: list[list[str]]
+    queued: list[str] | None = None
+
+class PlayerAbilitiesPassiveModel(BaseModel):
+    id: str
+    phase: m.Phase | None = None
+    immediate: bool
+    queued: bool
+
+class PlayerAbilitiesSharedActionModel(BaseModel):
+    id: str
+    used_by: str | None = None
+    phase: m.Phase | None = None
+    immediate: bool
+    target_count: int
+    targets: list[list[str]]
+    queued: list[str] | None = None
+
+class PlayerAbiltiesResponseModel(BaseModel):
+    actions: list[PlayerAbilitiesActionModel]
+    passives: list[PlayerAbilitiesPassiveModel]
+    shared_actions: list[PlayerAbilitiesSharedActionModel]
 
 # API V1 ENDPOINTS #
 
@@ -230,7 +274,7 @@ def game_get(id: int) -> GameResponseModel | ErrorResponse:
         day_no = game.day_no,
         phase = game.phase,
         players = [
-            PlayerModel(
+            ShortPlayerModel(
                 name = p.name,
                 is_alive = p.is_alive,
                 role_name = p.role_name,
@@ -238,16 +282,16 @@ def game_get(id: int) -> GameResponseModel | ErrorResponse:
                 alignment = p.alignment.id,
             )
             if mod_token == game.mod_token or player is p or not p.is_alive or (player is not None and p in player.known_players) else 
-            PlayerModel(
+            ShortPlayerModel(
                 name = p.name,
                 is_alive = p.is_alive,
             )
             for p in game.players
         ],
         chats = [
-            ChatModel(
+            ShortChatModel(
                 id = chat_id,
-                message_count = len(chat),
+                total_messages = len(chat),
             )
             for chat_id, chat in game.chats.items()
             if mod_token == game.mod_token or chat.has_read_perms(game, player)
@@ -299,6 +343,145 @@ def game_patch(id: int, body: GamePatchRequestModel) -> EmptyResponse | ErrorRes
         elif action == "next_phase":
             game.next_phase()
     return "", 204
+
+@api.get("/games/<int:id>/players")
+@validate()
+def game_players(id: int) -> list[ShortPlayerModel] | ErrorResponse:
+    """
+    Get the players in a game.
+    """
+    if id not in games:
+        return {"message": "Game not found"}, 404
+    return game_get(id)["players"]
+
+@api.get("/games/<int:id>/chats")
+@validate()
+def game_chats(id: int) -> list[ShortChatModel] | ErrorResponse:
+    """
+    Get the chats in a game.
+    """
+    if id not in games:
+        return {"message": "Game not found"}, 404
+    return game_get(id)["chats"]
+
+@api.get("/games/<int:id>/players/<string:name>")
+@validate()
+def game_player(id: int, name: str) -> PlayerResponseModel | ErrorResponse:
+    """
+    Get a player in a game.
+    """
+    if id not in games:
+        return {"message": "Game not found"}, 404
+    game = games[id]
+    player = next((p for p in game.players if p.name == name), None)
+    if player is None:
+        return {"message": "Player not found"}, 404
+    mod_token, player_auth = get_permissions(game, request.headers)
+    if mod_token is None and player_auth is None:
+        return {"message": "Not authenticated"}, 401
+    if mod_token != game.mod_token and player_auth is not player:
+        return {"message": "Not the moderator or the player"}, 403
+    return PlayerResponseModel(
+        name = player.name,
+        is_alive = player.is_alive,
+        role_name = player.role_name,
+        role = PlayerRAModel(
+            id = player.role.id,
+            actions = [a.id for a in player.actions],
+            passives = [a.id for a in player.passives],
+            shared_actions = [a.id for a in player.shared_actions],
+        ),
+        alignment = PlayerRAModel(
+            id = player.alignment.id,
+            actions = [a.id for a in player.alignment.actions],
+            passives = [a.id for a in player.alignment.passives],
+            shared_actions = [a.id for a in player.alignment.shared_actions],
+        ),
+        known_players = [
+            ShortPlayerModel(
+                name = p.name,
+                is_alive = p.is_alive,
+                role_name = p.role_name,
+                role = p.role.id,
+                alignment = p.alignment.id,
+            )
+            for p in player.known_players
+        ],
+        total_private_messages = len(player.private_messages),
+        chats = [
+            ShortChatModel(
+                id = chat_id,
+                total_messages = len(chat),
+            )
+            for chat_id, chat in game.chats.items()
+            if chat.has_read_perms(game, player)
+        ],
+    )
+
+@api.get("/games/<int:id>/players/<string:name>/abilities")
+@validate()
+def game_player_abilities(id: int, name: str) -> PlayerAbiltiesResponseModel | ErrorResponse:
+    """
+    Get the abilities of a player in a game.
+    """
+    if id not in games:
+        return {"message": "Game not found"}, 404
+    game = games[id]
+    player = next((p for p in game.players if p.name == name), None)
+    if player is None:
+        return {"message": "Player not found"}, 404
+    mod_token, player_auth = get_permissions(game, request.headers)
+    if mod_token is None and player_auth is None:
+        return {"message": "Not authenticated"}, 401
+    if mod_token != game.mod_token and player_auth is not player:
+        return {"message": "Not the moderator or the player"}, 403
+    return PlayerAbiltiesResponseModel(
+        actions = [
+            PlayerAbilitiesActionModel(
+                id = a.id,
+                phase = a.phase,
+                immediate = a.immediate,
+                target_count = a.target_count,
+                targets = [
+                    [t.name for t in targets]
+                    for targets in ex.get_valid_targets(a, game, player)
+                ] if a.target_count > 0 else [],
+                queued = [t.name for t in v.targets]
+                if (v := next((v for v in game.queued_visits if v.actor == player and v.ability == a), None)) is not None
+                else None,
+            )
+            for a in player.actions
+        ],
+        passives = [
+            PlayerAbilitiesPassiveModel(
+                id = a.id,
+                phase = a.phase,
+                immediate = a.immediate,
+                queued = a.check(game, player),
+            )
+            for a in player.passives
+        ],
+        shared_actions = [
+            PlayerAbilitiesSharedActionModel(
+                id = a.id,
+                used_by = v.actor.name
+                if (v := next((v for v in game.queued_visits if v.ability == a), None)) is not None
+                else None,
+                phase = a.phase,
+                immediate = a.immediate,
+                target_count = a.target_count,
+                targets = [
+                    [t.name for t in targets]
+                    for targets in ex.get_valid_targets(a, game, player)
+                ] if a.target_count > 0 else [],
+                queued = [t.name for t in v.targets]
+                if (v := next((v for v in game.queued_visits if v.ability == a), None)) is not None
+                else None
+            )
+            for a in player.shared_actions
+        ],
+    )
+    
 
 # TESTING #
 
