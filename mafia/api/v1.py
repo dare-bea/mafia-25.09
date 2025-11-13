@@ -1,41 +1,15 @@
 from datetime import datetime
-from secrets import token_urlsafe
 from typing import Any, Callable, Literal, cast
-from itertools import count
 import random
 
 from flask import Blueprint, request
 from pydantic import BaseModel, Field, field_validator
-from werkzeug.datastructures import Headers
 from flask_pydantic import validate  # type: ignore[import-untyped]
+from pydantic_core import PydanticCustomError
 
-import mafia as m
-import examples as ex
-
-# CUSTOM EXTENSIONS #
-
-class Game(m.Game):
-    def __init__(self, *args: Any, mod_token: str | None = None, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        if mod_token is None:
-            mod_token = token_urlsafe(16)
-        self.mod_token = mod_token
-        self.chats["global"] = m.Chat()
-        self.queued_visits: list[m.Visit] = []
-
-    def next_phase(self) -> None:
-        super().next_phase()
-        self.queued_visits.clear()
-
-r = ex.Resolver()
-
-# PERMISSION CHECKING #
-
-def get_permissions(game: Game, headers: Headers) -> tuple[str | None, m.Player | None]:
-    mod_token: str | None = headers.get("Authorization-Mod-Token")
-    player_name: str | None = headers.get("Authorization-Player-Name")
-    player: m.Player | None = next((p for p in game.players if p.name == player_name), None)
-    return mod_token, player
+from mafia import core
+from mafia import normal
+from mafia.api.core import Game, resolver, get_permissions, games, game_count
 
 # API V1 MODELS #
 
@@ -45,7 +19,7 @@ EmptyResponse = tuple[Literal[''], int]
 class GameSummaryModel(BaseModel):
     id: int
     players: list[str]
-    phase: m.Phase
+    phase: core.Phase
     day_no: int
     phase_order: list[Any]
     locked_chat_phases: list[Any]
@@ -64,12 +38,16 @@ class RoleModel(BaseModel):
 
     @field_validator('id')
     def validate_id(cls, v: Any) -> Any:
-        if v not in ex.ROLES:
-            raise ValueError(f"id must be one of {ex.ROLES.keys()}")
+        if v not in normal.ROLES:
+            raise PydanticCustomError(
+                "unknown_role",
+                "Id must be one of {expected}, recieved {input}.",
+                {'input': v, 'expected': list(normal.ROLES.keys())}
+            )
         return v
 
-    def value(self) -> type[m.Role] | Callable[..., m.Role]:
-        return ex.ROLES[self.id]
+    def value(self) -> type[core.Role] | Callable[..., core.Role]:
+        return normal.ROLES[self.id]
 
 class CombinedRoleModel(BaseModel):
     node: Literal["combined_role"] = "combined_role"
@@ -79,12 +57,16 @@ class CombinedRoleModel(BaseModel):
 
     @field_validator('id')
     def validate_id(cls, v: Any) -> Any:
-        if v not in ex.COMBINED_ROLES:
-            raise ValueError(f"id must be one of {ex.COMBINED_ROLES.keys()}")
+        if v not in normal.COMBINED_ROLES:
+            raise PydanticCustomError(
+                "unknown_combined_role",
+                "Id must be one of {expected}, recieved {input}.",
+                {'input': v, 'expected': list(normal.COMBINED_ROLES.keys())}
+            )
         return v
 
-    def value(self) -> Callable[..., m.Role]:
-        return ex.COMBINED_ROLES[self.id](*(r.value() for r in self.roles), **self.params)
+    def value(self) -> Callable[..., core.Role]:
+        return normal.COMBINED_ROLES[self.id](*(r.value() for r in self.roles), **self.params)
 
 class ModifierModel(BaseModel):
     node: Literal["modifier"] = "modifier"
@@ -94,16 +76,20 @@ class ModifierModel(BaseModel):
 
     @field_validator('id')
     def validate_id(cls, v: Any) -> Any:
-        if v not in ex.MODIFIERS:
-            raise ValueError(f"id must be one of {ex.MODIFIERS.keys()}")
+        if v not in normal.MODIFIERS:
+            raise PydanticCustomError(
+                "unknown_modifier",
+                "Id must be one of {expected}, recieved {input}.",
+                {'input': v, 'expected': list(normal.MODIFIERS.keys())}
+            )
         return v
 
-    def value(self) -> type[m.Role]:
+    def value(self) -> type[core.Role]:
         r = self.role.value()
-        if isinstance(r, type) and issubclass(r, m.Role):
-            return ex.MODIFIERS[self.id](**self.params)(r)
+        if isinstance(r, type) and issubclass(r, core.Role):
+            return normal.MODIFIERS[self.id](**self.params)(r)
         else:
-            return ex.MODIFIERS[self.id](**self.params)(cast(type[m.Role], type(r())))
+            return normal.MODIFIERS[self.id](**self.params)(cast(type[core.Role], type(r())))
 
 class GameCreateRequestRole(BaseModel):
     role: RoleModel | CombinedRoleModel | ModifierModel
@@ -115,18 +101,22 @@ class GameCreateRequestRole(BaseModel):
 
     @field_validator('alignment')
     def validate_alignment(cls, v: Any) -> Any:
-        if v not in ex.ALIGNMENTS:
-            raise ValueError(f"alignment must be one of {ex.ALIGNMENTS.keys()}")
+        if v not in normal.ALIGNMENTS:
+            raise PydanticCustomError(
+                "unknown_alignment",
+                "Alignment must be one of {expected}, recieved {input}.",
+                {'input': v, 'expected': list(normal.ALIGNMENTS.keys())}
+            )
         return v
 
-    def alignment_value(self) -> type[m.Alignment] | Callable[..., m.Alignment]:
-        return ex.ALIGNMENTS[self.alignment]
+    def alignment_value(self) -> type[core.Alignment] | Callable[..., core.Alignment]:
+        return normal.ALIGNMENTS[self.alignment]
 
 class GameCreateRequestModel(BaseModel):
     players: list[str]
     day_no: int = 1
-    phase_order: list[Any] = Field(default_factory=lambda: [m.Phase.DAY, m.Phase.NIGHT])
-    locked_chat_phases: list[Any] = Field(default_factory=lambda: [m.Phase.NIGHT])
+    phase_order: list[Any] = Field(default_factory=lambda: [core.Phase.DAY, core.Phase.NIGHT])
+    locked_chat_phases: list[Any] = Field(default_factory=lambda: [core.Phase.NIGHT])
     phase: Any | None = None
     shuffle_roles: bool = True
     roles: list[GameCreateRequestRole]
@@ -153,7 +143,7 @@ class ShortChatModel(BaseModel):
 class GameResponseModel(BaseModel):
     id: int
     day_no: int
-    phase: m.Phase
+    phase: core.Phase
     players: list[ShortPlayerModel | ShortPartialPlayerModel]
     chats: list[ShortChatModel]
     phase_order: list[Any]
@@ -161,7 +151,7 @@ class GameResponseModel(BaseModel):
 
 class GamePutRequestModel(BaseModel):
     day_no: int | None = None
-    phase: m.Phase | None = None
+    phase: core.Phase | None = None
     phase_order: list[Any] | None = None
     locked_chat_phases: list[Any] | None = None
 
@@ -190,7 +180,7 @@ class PlayerResponseModel(BaseModel):
 
 class PlayerAbilitiesActionModel(BaseModel):
     id: str
-    phase: m.Phase | None = None
+    phase: core.Phase | None = None
     immediate: bool
     target_count: int
     targets: list[list[str]]
@@ -198,14 +188,14 @@ class PlayerAbilitiesActionModel(BaseModel):
 
 class PlayerAbilitiesPassiveModel(BaseModel):
     id: str
-    phase: m.Phase | None = None
+    phase: core.Phase | None = None
     immediate: bool
     queued: bool
 
 class PlayerAbilitiesSharedActionModel(BaseModel):
     id: str
     used_by: str | None = None
-    phase: m.Phase | None = None
+    phase: core.Phase | None = None
     immediate: bool
     target_count: int
     targets: list[list[str]]
@@ -253,11 +243,9 @@ class ChatMessagesResponseModel(BaseModel):
 
 # API V1 ENDPOINTS #
 
-api = Blueprint("api_v1", __name__, url_prefix="/api/v1")
-games: dict[int, Game] = {}
-game_count = count(0)
+api_bp = Blueprint("api_v1", __name__, url_prefix="/api/v1")
 
-@api.get("/games")
+@api_bp.get("/games")
 @validate()  # type: ignore[misc]
 def game_list(query: GameListQueryModel) -> GameListResponseModel:
     """
@@ -281,7 +269,7 @@ def game_list(query: GameListQueryModel) -> GameListResponseModel:
         total_games=len(games)
     )
 
-@api.post("/games")
+@api_bp.post("/games")
 @validate()  # type: ignore[misc]
 def game_create(body: GameCreateRequestModel) -> tuple[GameCreateResponseModel, int]:
     """
@@ -293,7 +281,7 @@ def game_create(body: GameCreateRequestModel) -> tuple[GameCreateResponseModel, 
     if body.shuffle_roles:
         random.shuffle(roles)
 
-    alignments: dict[tuple[type[m.Alignment] | Callable[..., m.Alignment], str | None], m.Alignment] = {}
+    alignments: dict[tuple[type[core.Alignment] | Callable[..., core.Alignment], str | None], core.Alignment] = {}
     for r in roles:
         a = r.alignment_value()
         if (a, r.alignment_id) not in alignments:
@@ -305,7 +293,7 @@ def game_create(body: GameCreateRequestModel) -> tuple[GameCreateResponseModel, 
     game = Game(body.day_no, start_phase=body.phase, phase_order=tuple(body.phase_order), locked_chat_phases=frozenset(body.locked_chat_phases))
 
     for player_name, role in zip(body.players, roles):
-        game.add_player(m.Player(player_name, role.role.value()(**role.role_params), alignments[role.alignment_value(), role.alignment_id]))
+        game.add_player(core.Player(player_name, role.role.value()(**role.role_params), alignments[role.alignment_value(), role.alignment_id]))
 
     id = next(game_count)
 
@@ -313,7 +301,7 @@ def game_create(body: GameCreateRequestModel) -> tuple[GameCreateResponseModel, 
 
     return GameCreateResponseModel(id=id, mod_token=game.mod_token), 201
 
-@api.get("/games/<int:id>")
+@api_bp.get("/games/<int:id>")
 @validate()  # type: ignore[misc]
 def game_get(id: int) -> GameResponseModel | ErrorResponse:
     """
@@ -354,7 +342,7 @@ def game_get(id: int) -> GameResponseModel | ErrorResponse:
         locked_chat_phases = list(game.locked_chat_phases),
     )
 
-@api.put("/games/<int:id>")
+@api_bp.put("/games/<int:id>")
 @validate()  # type: ignore[misc]
 def game_put(id: int, body: GamePutRequestModel) -> EmptyResponse | ErrorResponse:
     """
@@ -378,7 +366,7 @@ def game_put(id: int, body: GamePutRequestModel) -> EmptyResponse | ErrorRespons
         game.locked_chat_phases = frozenset(body.locked_chat_phases)
     return "", 204
 
-@api.patch("/games/<int:id>")
+@api_bp.patch("/games/<int:id>")
 @validate()  # type: ignore[misc]
 def game_patch(id: int, body: GamePatchRequestModel) -> EmptyResponse | ErrorResponse:
     """
@@ -403,12 +391,12 @@ def game_patch(id: int, body: GamePatchRequestModel) -> EmptyResponse | ErrorRes
                 if v.is_active_time(game):
                     game.visits.append(v)
             game.queued_visits.clear()
-            r.resolve_game(game)
+            resolver.resolve_game(game)
         elif action == "next_phase":
             game.next_phase()
     return "", 204
 
-@api.get("/games/<int:id>/players")
+@api_bp.get("/games/<int:id>/players")
 @validate()  # type: ignore[misc]
 def game_players(id: int) -> list[ShortPlayerModel | ShortPartialPlayerModel] | ErrorResponse:
     """
@@ -434,7 +422,7 @@ def game_players(id: int) -> list[ShortPlayerModel | ShortPartialPlayerModel] | 
         for p in game.players
     ]
 
-@api.get("/games/<int:id>/chats")
+@api_bp.get("/games/<int:id>/chats")
 @validate()  # type: ignore[misc]
 def game_chats(id: int) -> list[ShortChatModel] | ErrorResponse:
     """
@@ -453,7 +441,7 @@ def game_chats(id: int) -> list[ShortChatModel] | ErrorResponse:
         if mod_token == game.mod_token or chat.has_read_perms(game, player)
     ]
 
-@api.get("/games/<int:id>/players/<string:name>")
+@api_bp.get("/games/<int:id>/players/<string:name>")
 @validate()  # type: ignore[misc]
 def game_player(id: int, name: str) -> PlayerResponseModel | ErrorResponse:
     """
@@ -507,7 +495,7 @@ def game_player(id: int, name: str) -> PlayerResponseModel | ErrorResponse:
         ],
     )
 
-@api.get("/games/<int:id>/players/<string:name>/abilities")
+@api_bp.get("/games/<int:id>/players/<string:name>/abilities")
 @validate()  # type: ignore[misc]
 def game_player_abilities(id: int, name: str) -> PlayerAbiltiesResponseModel | ErrorResponse:
     """
@@ -533,7 +521,7 @@ def game_player_abilities(id: int, name: str) -> PlayerAbiltiesResponseModel | E
                 target_count = a.target_count,
                 targets = [
                     [t.name for t in targets]
-                    for targets in ex.get_valid_targets(a, game, player)
+                    for targets in normal.get_valid_targets(a, game, player)
                 ] if a.target_count > 0 else [],
                 queued = [t.name for t in v.targets]
                 if (v := next((v for v in game.queued_visits if v.actor == player and v.ability == a), None)) is not None
@@ -561,7 +549,7 @@ def game_player_abilities(id: int, name: str) -> PlayerAbiltiesResponseModel | E
                 target_count = a.target_count,
                 targets = [
                     [t.name for t in targets]
-                    for targets in ex.get_valid_targets(a, game, player)
+                    for targets in normal.get_valid_targets(a, game, player)
                 ] if a.target_count > 0 else [],
                 queued = [t.name for t in v.targets]
                 if (v := next((v for v in game.queued_visits if v.ability == a and v.actor.alignment == player.alignment), None)) is not None
@@ -571,7 +559,7 @@ def game_player_abilities(id: int, name: str) -> PlayerAbiltiesResponseModel | E
         ],
     )
 
-@api.post("/games/<int:id>/players/<string:name>/abilities")
+@api_bp.post("/games/<int:id>/players/<string:name>/abilities")
 @validate()  # type: ignore[misc]
 def game_player_queue_ability(id: int, name: str, body: PlayerQueueAbilityRequestModel) -> EmptyResponse | ErrorResponse:
     """
@@ -618,11 +606,11 @@ def game_player_queue_ability(id: int, name: str, body: PlayerQueueAbilityReques
         if prev_visit is not None:
             game.queued_visits.remove(prev_visit)
         if requested_visit is not None:
-            game.queued_visits.append(m.Visit(
+            game.queued_visits.append(core.Visit(
                 actor=player,
                 targets=tuple(valid_players[t] for t in requested_visit.targets), 
                 ability=valid_actions[ability_id], 
-                ability_type=m.AbilityType.ACTION, 
+                ability_type=core.AbilityType.ACTION, 
                 game=game, 
                 player_inputs=tuple(requested_visit.player_inputs),
             ))
@@ -632,18 +620,18 @@ def game_player_queue_ability(id: int, name: str, body: PlayerQueueAbilityReques
         if prev_visit is not None:
             game.queued_visits.remove(prev_visit)
         if requested_visit is not None:
-            game.queued_visits.append(m.Visit(
+            game.queued_visits.append(core.Visit(
                 actor=player,
                 targets=tuple(valid_players[t] for t in requested_visit.targets),
                 ability=valid_shared_actions[ability_id],
-                ability_type=m.AbilityType.SHARED_ACTION,
+                ability_type=core.AbilityType.SHARED_ACTION,
                 game=game,
                 player_inputs=tuple(requested_visit.player_inputs)
             ))
 
     return "", 204
 
-@api.get("/games/<int:id>/players/<string:name>/messages")
+@api_bp.get("/games/<int:id>/players/<string:name>/messages")
 @validate()  # type: ignore[misc]
 def game_player_messages(id: int, name: str, query: ChatQueryModel) -> PlayerPMResponseModel | ErrorResponse:
     """
@@ -674,7 +662,7 @@ def game_player_messages(id: int, name: str, query: ChatQueryModel) -> PlayerPMR
         ]
     )
 
-@api.post("/games/<int:id>/players/<string:name>/messages")
+@api_bp.post("/games/<int:id>/players/<string:name>/messages")
 @validate()  # type: ignore[misc]
 def game_player_send_message(id: int, name: str, body: ChatPostRequestModel) -> EmptyResponse | ErrorResponse:
     """
@@ -694,7 +682,7 @@ def game_player_send_message(id: int, name: str, body: ChatPostRequestModel) -> 
     player.private_messages.send(player_auth.name if player_auth is not None else "Moderator", body.content)
     return "", 204
 
-@api.get("/games/<int:id>/chats/<string:chat_id>")
+@api_bp.get("/games/<int:id>/chats/<string:chat_id>")
 @validate()  # type: ignore[misc]
 def game_chat(id: int, chat_id: str) -> ChatGetResponseModel | ErrorResponse:
     """
@@ -717,7 +705,7 @@ def game_chat(id: int, chat_id: str) -> ChatGetResponseModel | ErrorResponse:
         total_messages = len(chat)
     )
 
-@api.get("/games/<int:id>/chats/<string:chat_id>/messages")
+@api_bp.get("/games/<int:id>/chats/<string:chat_id>/messages")
 @validate()  # type: ignore[misc]
 def game_chat_messages(id: int, chat_id: str, query: ChatQueryModel) -> ChatMessagesResponseModel | ErrorResponse:
     """
@@ -748,8 +736,8 @@ def game_chat_messages(id: int, chat_id: str, query: ChatQueryModel) -> ChatMess
         ],
     )
 
-@api.post("/games/<int:id>/chats/<string:chat_id>")
-@api.post("/games/<int:id>/chats/<string:chat_id>/messages")
+@api_bp.post("/games/<int:id>/chats/<string:chat_id>")
+@api_bp.post("/games/<int:id>/chats/<string:chat_id>/messages")
 @validate()  # type: ignore[misc]
 def game_chat_send_message(id: int, chat_id: str, body: ChatPostRequestModel) -> EmptyResponse | ErrorResponse:
     """
