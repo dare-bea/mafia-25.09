@@ -202,6 +202,14 @@ class PlayerAbiltiesResponseModel(BaseModel):
     passives: list[PlayerAbilitiesPassiveModel]
     shared_actions: list[PlayerAbilitiesSharedActionModel]
 
+class PlayerQueueAbilityModel(BaseModel):
+    targets: list[str] = Field(default_factory=list)
+    player_inputs: list[Any] = Field(default_factory=list)
+
+class PlayerQueueAbilityRequestModel(BaseModel):
+    actions: dict[str, PlayerQueueAbilityModel | None] = Field(default_factory=dict)
+    shared_actions: dict[str, PlayerQueueAbilityModel | None] = Field(default_factory=dict)
+
 # API V1 ENDPOINTS #
 
 api = Blueprint("api_v1", __name__, url_prefix="/api/v1")
@@ -465,7 +473,7 @@ def game_player_abilities(id: int, name: str) -> PlayerAbiltiesResponseModel | E
             PlayerAbilitiesSharedActionModel(
                 id = a.id,
                 used_by = v.actor.name
-                if (v := next((v for v in game.queued_visits if v.ability == a), None)) is not None
+                if (v := next((v for v in game.queued_visits if v.ability == a and v.actor.alignment == player.alignment), None)) is not None
                 else None,
                 phase = a.phase,
                 immediate = a.immediate,
@@ -475,13 +483,84 @@ def game_player_abilities(id: int, name: str) -> PlayerAbiltiesResponseModel | E
                     for targets in ex.get_valid_targets(a, game, player)
                 ] if a.target_count > 0 else [],
                 queued = [t.name for t in v.targets]
-                if (v := next((v for v in game.queued_visits if v.ability == a), None)) is not None
+                if (v := next((v for v in game.queued_visits if v.ability == a and v.actor.alignment == player.alignment), None)) is not None
                 else None
             )
             for a in player.shared_actions
         ],
     )
+
+@api.post("/games/<int:id>/players/<string:name>/abilities")
+@validate()
+def game_player_queue_ability(id: int, name: str, body: PlayerQueueAbilityRequestModel) -> EmptyResponse | ErrorResponse:
+    """
+    Queue an ability for a player in a game.
+    """
+    if id not in games:
+        return {"message": "Game not found"}, 404
+    game = games[id]
+    player = next((p for p in game.players if p.name == name), None)
+    if player is None:
+        return {"message": "Player not found"}, 404
+    mod_token, player_auth = get_permissions(game, request.headers)
+    if mod_token is None and player_auth is None:
+        return {"message": "Not authenticated"}, 401
+    if mod_token != game.mod_token and player_auth is not player:
+        return {"message": "Not the moderator or the player"}, 403
     
+    valid_players = {p.name: p for p in game.players}
+    valid_actions = {a.id: a for a in player.actions}
+    valid_shared_actions = {a.id: a for a in player.shared_actions}
+
+    for ability_id, requested_visit in body.actions.items():
+        if ability_id not in valid_actions:
+            return {"message": f"Invalid action '{ability_id}' for player '{player.name}'"}, 400
+        if requested_visit is not None:
+            invalid_targets = {t for t in requested_visit.targets if t not in valid_players}
+            if invalid_targets:
+                return {"message": f"Invalid targets for '{ability_id}': {', '.join(invalid_targets)}"}, 400
+            if not valid_actions[ability_id].check(game, player, [valid_players[t] for t in requested_visit.targets]):
+                return {"message": f"Invalid targets for '{ability_id}'"}, 400
+
+    for ability_id, requested_visit in body.shared_actions.items():
+        if ability_id not in valid_shared_actions:
+            return {"message": f"Invalid action '{ability_id}' for player '{player.name}'"}, 400
+        if requested_visit is not None:
+            invalid_targets = {t for t in requested_visit.targets if t not in valid_players}
+            if invalid_targets:
+                return {"message": f"Invalid targets for '{ability_id}': {', '.join(invalid_targets)}"}, 400
+            if not valid_shared_actions[ability_id].check(game, player, [valid_players[t] for t in requested_visit.targets]):
+                return {"message": f"Invalid targets for '{ability_id}'"}, 400
+
+    for ability_id, requested_visit in body.actions.items():
+        prev_visit = next((v for v in game.queued_visits if v.actor == player and v.ability == valid_actions[ability_id]), None)
+        if prev_visit is not None:
+            game.queued_visits.remove(prev_visit)
+        if requested_visit is not None:
+            game.queued_visits.append(m.Visit(
+                actor=player,
+                targets=tuple(valid_players[t] for t in requested_visit.targets), 
+                ability=valid_actions[ability_id], 
+                ability_type=m.AbilityType.ACTION, 
+                game=game, 
+                player_inputs=tuple(requested_visit.player_inputs),
+            ))
+
+    for ability_id, requested_visit in body.shared_actions.items():
+        prev_visit = next((v for v in game.queued_visits if v.ability == valid_shared_actions[ability_id] and v.actor.alignment == player.alignment), None)
+        if prev_visit is not None:
+            game.queued_visits.remove(prev_visit)
+        if requested_visit is not None:
+            game.queued_visits.append(m.Visit(
+                actor=player,
+                targets=tuple(valid_players[t] for t in requested_visit.targets),
+                ability=valid_shared_actions[ability_id],
+                ability_type=m.AbilityType.SHARED_ACTION,
+                game=game,
+                player_inputs=tuple(requested_visit.player_inputs)
+            ))
+
+    return "", 204
 
 # TESTING #
 
