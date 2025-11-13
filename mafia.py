@@ -6,9 +6,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence, Iterator
 from types import EllipsisType
-from typing import Any, Literal, Self, TypeGuard, TypeVar, cast
+from typing import Any, Generic, Literal, Self, TypeGuard, TypeVar, cast
 from enum import Enum, auto, IntEnum
 from dataclasses import InitVar, dataclass, field
+from sys import version_info
 
 
 class VisitStatus(IntEnum):
@@ -562,14 +563,37 @@ class Player:
         """Get all visits that are targeting this player."""
         return filter(lambda v: self in v.targets, game.visits)
 
+P = TypeVar("P")
 
 @dataclass(eq=False)
-class Game:
+class Game(Generic[P]):
+    def __post_init__(self, start_phase: P | None) -> None:
+        if start_phase is not None:
+            self.phase = start_phase
+    
     day_no: int = 1
-    phase: Phase = Phase.DAY
+    phase_order: tuple[P, ...] = (Phase.DAY, Phase.NIGHT)  # type: ignore[assignment]
     players: list[Player] = field(default_factory=list, kw_only=True)
     visits: list[Visit] = field(default_factory=list, kw_only=True)
     chats: dict[str, Chat] = field(default_factory=dict, kw_only=True)
+    phase_idx: int = field(default=0, kw_only=True)
+    start_phase: InitVar[P | None] = field(default=None, kw_only=True)
+
+    @property
+    def phase(self) -> P:
+        return self.phase_order[self.phase_idx]
+
+    @phase.setter
+    def phase(self, value: P) -> None:
+        self.phase_idx = self.phase_order.index(value)
+
+    def next_phase(self) -> None:
+        """Advances the game to the next phase."""
+        if self.phase_idx + 1 >= len(self.phase_order):
+            self.phase_idx = 0
+            self.day_no += 1
+        else:
+            self.phase_idx += 1
 
     @property
     def alive_players(self) -> Iterator[Player]:

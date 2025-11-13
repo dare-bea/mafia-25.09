@@ -363,11 +363,7 @@ def api_v0_patch_game(id: int) -> Any:
     if "resolve" in body["actions"]:
         r.resolve_game(game)
     if "next_phase" in body["actions"]:
-        if game.phase == m.Phase.DAY:
-            game.phase = m.Phase.NIGHT
-        else:
-            game.phase = m.Phase.DAY
-            game.day_no += 1
+        game.next_phase()
     return "", 204
 
 

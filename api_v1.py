@@ -25,6 +25,9 @@ class Game(m.Game):
         self.chats["global"] = m.Chat()
         self.queued_visits: list[m.Visit] = []
 
+    def next_phase(self) -> None:
+        super().next_phase()
+        self.queued_visits.clear()
 
 r = ex.Resolver()
 
@@ -294,11 +297,7 @@ def game_patch(id: int, body: GamePatchRequestModel) -> EmptyResponse | ErrorRes
         elif action == "resolve":
             r.resolve_game(game)
         elif action == "next_phase":
-            if game.phase == m.Phase.DAY:
-                game.phase = m.Phase.NIGHT
-            else:
-                game.phase = m.Phase.DAY
-                game.day_no += 1
+            game.next_phase()
     return "", 204
 
 # TESTING #

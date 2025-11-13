@@ -45,7 +45,7 @@ def test_catastrophic_rule() -> None:
     town = examples.Town()
     mafia = examples.Mafia()
 
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
     alice = m.Player("Alice", cop, town)
     bob = m.Player("Bob", jailkeeper, town)
     eve = m.Player("Eve", roleblocker, mafia)
@@ -136,7 +136,7 @@ def test_protection() -> None:
     town = examples.Town()
     mafia = examples.Mafia()
 
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
     alice = m.Player("Alice", examples.Doctor(), town)
     bob = m.Player("Bob", examples.Vanilla(), town)
     eve = m.Player("Eve", examples.Vanilla(), mafia)
@@ -167,7 +167,7 @@ def test_xshot_macho() -> None:
     town = examples.Town()
     mafia = examples.Mafia()
 
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
     alice = m.Player("Alice", examples.Doctor(), town)
     bob = m.Player("Bob", examples.XShot(1)(examples.Macho)(), town)
     carol = m.Player("Carol", examples.XShot(1)(examples.Macho)(), town)
@@ -203,7 +203,7 @@ def test_tracker_roleblocker() -> None:
     town = examples.Town()
     mafia = examples.Mafia()
 
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
     alice = m.Player("Alice", examples.Roleblocker(), town)
     bob = m.Player("Bob", examples.Tracker(), town)
     eve = m.Player("Eve", examples.Vanilla(), mafia)
@@ -236,7 +236,7 @@ def test_juggernaut() -> None:
     town = examples.Town()
     mafia = examples.Mafia()
 
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
     alice = m.Player("Alice", examples.Roleblocker(), town)
     bob = m.Player("Bob", examples.Vanilla(), town)
     eve = m.Player("Eve", examples.Juggernaut(), mafia)
@@ -266,7 +266,7 @@ def test_investigative_fail() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
     alice = m.Player("Alice", examples.Roleblocker(), town)
     bob = m.Player("Bob", examples.Cop(), town)
@@ -292,7 +292,7 @@ def test_ascetic() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
     alice = m.Player("Alice", examples.Ascetic(), town)
     bob = m.Player("Bob", examples.Doctor(), town)
@@ -315,7 +315,7 @@ def test_detective() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
     alice = m.Player("Alice", examples.Detective(), town)
     bob = m.Player("Bob", examples.Vanilla(), town)
@@ -345,7 +345,7 @@ def test_jack_of_all_trades() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
     joat = examples.Jack_of_All_Trades(
         examples.Cop,
@@ -375,7 +375,7 @@ def test_hider() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
     alice = m.Player("Alice", examples.Hider(), town)
     bob = m.Player("Bob", examples.Vanilla(), town)
@@ -402,7 +402,7 @@ def test_traffic_analyst() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
     alice = m.Player("Alice", examples.Traffic_Analyst(), town)
     bob = m.Player("Bob", examples.Mason(), town)
@@ -443,7 +443,7 @@ def test_universal_backup() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
     alice = m.Player("Alice", examples.Universal_Backup(), town)
     bob = m.Player("Bob", examples.Vigilante(), town)
@@ -472,7 +472,7 @@ def test_activated() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
     activated = examples.Activated()
 
     alice = m.Player("Alice", activated(examples.Bulletproof)(), town)
@@ -498,7 +498,7 @@ def test_ninja() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
     alice = m.Player("Alice", examples.Watcher(), town)
     bob = m.Player("Bob", examples.Vanilla(), town)
@@ -525,7 +525,7 @@ def test_personal() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
     personal = examples.Personal()
 
     alice = m.Player("Alice", personal(examples.Watcher)(), town)
@@ -552,7 +552,7 @@ def test_combine() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
     combined = m.Role.combine(examples.Bulletproof, examples.Cop)
 
     alice = m.Player("Alice", combined(), town)
