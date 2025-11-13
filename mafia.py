@@ -17,8 +17,8 @@ class VisitStatus(IntEnum):
 
 
 class Phase(Enum):
-    DAY = auto()
-    NIGHT = auto()
+    DAY = "day"
+    NIGHT = "night"
 
 
 class WinResult(Enum):

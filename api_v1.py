@@ -47,6 +47,8 @@ class GameSummaryModel(BaseModel):
     players: list[str]
     phase: m.Phase
     day_no: int
+    phase_order: list[Any]
+    locked_chat_phases: list[Any]
 
 class GameListQueryModel(BaseModel):
     start: int = 0
@@ -123,7 +125,9 @@ class GameCreateRequestRole(BaseModel):
 class GameCreateRequestModel(BaseModel):
     players: list[str]
     day_no: int = 1
-    phase: m.Phase = m.Phase.DAY
+    phase_order: list[Any] = Field(default_factory=lambda: [m.Phase.DAY, m.Phase.NIGHT])
+    locked_chat_phases: list[Any] = Field(default_factory=lambda: [m.Phase.NIGHT])
+    phase: Any | None = None
     shuffle_roles: bool = True
     roles: list[GameCreateRequestRole]
 
@@ -152,10 +156,14 @@ class GameResponseModel(BaseModel):
     phase: m.Phase
     players: list[ShortPlayerModel | ShortPartialPlayerModel]
     chats: list[ShortChatModel]
+    phase_order: list[Any]
+    locked_chat_phases: list[Any]
 
 class GamePutRequestModel(BaseModel):
     day_no: int | None = None
     phase: m.Phase | None = None
+    phase_order: list[Any] | None = None
+    locked_chat_phases: list[Any] | None = None
 
 class GamePatchRequestModel(BaseModel):
     actions: list[Literal[
@@ -265,6 +273,8 @@ def game_list(query: GameListQueryModel) -> GameListResponseModel:
                 players=[player.name for player in game.players],
                 phase=game.phase,
                 day_no=game.day_no,
+                phase_order=list(game.phase_order),
+                locked_chat_phases=list(game.locked_chat_phases),
             )
             for id, game in game_result
         ],
@@ -289,7 +299,10 @@ def game_create(body: GameCreateRequestModel) -> tuple[GameCreateResponseModel, 
         if (a, r.alignment_id) not in alignments:
             alignments[a, r.alignment_id] = a(id=r.alignment_id, demonym=r.alignment_demonym, role_names=r.alignment_role_names)
 
-    game = Game(body.day_no, start_phase=body.phase)
+    if body.phase is None:
+        body.phase = body.phase_order[0]
+    
+    game = Game(body.day_no, start_phase=body.phase, phase_order=tuple(body.phase_order), locked_chat_phases=frozenset(body.locked_chat_phases))
 
     for player_name, role in zip(body.players, roles):
         game.add_player(m.Player(player_name, role.role.value()(**role.role_params), alignments[role.alignment_value(), role.alignment_id]))
@@ -337,6 +350,8 @@ def game_get(id: int) -> GameResponseModel | ErrorResponse:
             for chat_id, chat in game.chats.items()
             if mod_token == game.mod_token or chat.has_read_perms(game, player)
         ],
+        phase_order = list(game.phase_order),
+        locked_chat_phases = list(game.locked_chat_phases),
     )
 
 @api.put("/games/<int:id>")
@@ -357,6 +372,10 @@ def game_put(id: int, body: GamePutRequestModel) -> EmptyResponse | ErrorRespons
         game.day_no = body.day_no
     if body.phase is not None:
         game.phase = body.phase
+    if body.phase_order is not None:
+        game.phase_order = tuple(body.phase_order)
+    if body.locked_chat_phases is not None:
+        game.locked_chat_phases = frozenset(body.locked_chat_phases)
     return "", 204
 
 @api.patch("/games/<int:id>")
