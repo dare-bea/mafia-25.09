@@ -1,15 +1,12 @@
-# from __future__ import annotations
-
 from secrets import token_urlsafe
-from typing import Any, Callable, Literal
+from typing import Any, Callable, Literal, cast
 from itertools import count
 import random
 
 from flask import Blueprint, request
-# from flask.typing import ResponseReturnValue as RRV
 from pydantic import BaseModel, Field, field_validator
 from werkzeug.datastructures import Headers
-from flask_pydantic import validate
+from flask_pydantic import validate  # type: ignore[import-untyped]
 
 import mafia as m
 import examples as ex
@@ -59,7 +56,7 @@ class GameListResponseModel(BaseModel):
     total_games: int
 
 class RoleModel(BaseModel):
-    type: Literal["role"] = "role"
+    node: Literal["role"] = "role"
     id: str
 
     @field_validator('id')
@@ -68,11 +65,11 @@ class RoleModel(BaseModel):
             raise ValueError(f"id must be one of {ex.ROLES.keys()}")
         return v
 
-    def value(self) -> Callable:
+    def value(self) -> type[m.Role] | Callable[..., m.Role]:
         return ex.ROLES[self.id]
 
 class CombinedRoleModel(BaseModel):
-    type: Literal["combined_role"] = "combined_role"
+    node: Literal["combined_role"] = "combined_role"
     id: str
     roles: list["RoleModel | ModifierModel"]
     params: dict[str, Any] = Field(default_factory=dict)
@@ -83,11 +80,11 @@ class CombinedRoleModel(BaseModel):
             raise ValueError(f"id must be one of {ex.COMBINED_ROLES.keys()}")
         return v
 
-    def value(self) -> Callable:
+    def value(self) -> Callable[..., m.Role]:
         return ex.COMBINED_ROLES[self.id](*(r.value() for r in self.roles), **self.params)
 
 class ModifierModel(BaseModel):
-    type: Literal["modifier"] = "modifier"
+    node: Literal["modifier"] = "modifier"
     id: str
     role: "RoleModel | CombinedRoleModel | ModifierModel"
     params: dict[str, Any] = Field(default_factory=dict)
@@ -98,8 +95,12 @@ class ModifierModel(BaseModel):
             raise ValueError(f"id must be one of {ex.MODIFIERS.keys()}")
         return v
 
-    def value(self) -> Callable:
-        return ex.MODIFIERS[self.id](**self.params)(self.role.value())
+    def value(self) -> type[m.Role]:
+        r = self.role.value()
+        if isinstance(r, type) and issubclass(r, m.Role):
+            return ex.MODIFIERS[self.id](**self.params)(r)
+        else:
+            return ex.MODIFIERS[self.id](**self.params)(cast(type[m.Role], type(r())))
 
 class GameCreateRequestRole(BaseModel):
     role: RoleModel | CombinedRoleModel | ModifierModel
@@ -115,7 +116,7 @@ class GameCreateRequestRole(BaseModel):
             raise ValueError(f"alignment must be one of {ex.ALIGNMENTS.keys()}")
         return v
 
-    def alignment_value(self) -> Callable:
+    def alignment_value(self) -> type[m.Alignment] | Callable[..., m.Alignment]:
         return ex.ALIGNMENTS[self.alignment]
 
 class GameCreateRequestModel(BaseModel):
@@ -217,7 +218,7 @@ games: dict[int, Game] = {}
 game_count = count(0)
 
 @api.get("/games")
-@validate()
+@validate()  # type: ignore[misc]
 def game_list(query: GameListQueryModel) -> GameListResponseModel:
     """
     Get the list of games.
@@ -239,7 +240,7 @@ def game_list(query: GameListQueryModel) -> GameListResponseModel:
     )
 
 @api.post("/games")
-@validate()
+@validate()  # type: ignore[misc]
 def game_create(body: GameCreateRequestModel) -> tuple[GameCreateResponseModel, int]:
     """
     Create a new game.
@@ -250,7 +251,7 @@ def game_create(body: GameCreateRequestModel) -> tuple[GameCreateResponseModel, 
     if body.shuffle_roles:
         random.shuffle(roles)
 
-    alignments: dict[tuple[Callable, str | None], m.Alignment] = {}
+    alignments: dict[tuple[type[m.Alignment] | Callable[..., m.Alignment], str | None], m.Alignment] = {}
     for r in roles:
         a = r.alignment_value()
         if (a, r.alignment_id) not in alignments:
@@ -268,7 +269,7 @@ def game_create(body: GameCreateRequestModel) -> tuple[GameCreateResponseModel, 
     return GameCreateResponseModel(id=id, mod_token=game.mod_token), 201
 
 @api.get("/games/<int:id>")
-@validate()
+@validate()  # type: ignore[misc]
 def game_get(id: int) -> GameResponseModel | ErrorResponse:
     """
     Get a game.
@@ -307,7 +308,7 @@ def game_get(id: int) -> GameResponseModel | ErrorResponse:
     )
 
 @api.put("/games/<int:id>")
-@validate()
+@validate()  # type: ignore[misc]
 def game_put(id: int, body: GamePutRequestModel) -> EmptyResponse | ErrorResponse:
     """
     Update a game.
@@ -327,7 +328,7 @@ def game_put(id: int, body: GamePutRequestModel) -> EmptyResponse | ErrorRespons
     return "", 204
 
 @api.patch("/games/<int:id>")
-@validate()
+@validate()  # type: ignore[misc]
 def game_patch(id: int, body: GamePatchRequestModel) -> EmptyResponse | ErrorResponse:
     """
     Update a game.
@@ -353,27 +354,52 @@ def game_patch(id: int, body: GamePatchRequestModel) -> EmptyResponse | ErrorRes
     return "", 204
 
 @api.get("/games/<int:id>/players")
-@validate()
+@validate()  # type: ignore[misc]
 def game_players(id: int) -> list[ShortPlayerModel] | ErrorResponse:
     """
     Get the players in a game.
     """
     if id not in games:
         return {"message": "Game not found"}, 404
-    return game_get(id)["players"]
+    game = games[id]
+    mod_token, player = get_permissions(game, request.headers)
+    return [
+        ShortPlayerModel(
+            name = p.name,
+            is_alive = p.is_alive,
+            role_name = p.role_name,
+            role = p.role.id,
+            alignment = p.alignment.id,
+        )
+        if mod_token == game.mod_token or player is p or not p.is_alive or (player is not None and p in player.known_players) else 
+        ShortPlayerModel(
+            name = p.name,
+            is_alive = p.is_alive,
+        )
+        for p in game.players
+    ]
 
 @api.get("/games/<int:id>/chats")
-@validate()
+@validate()  # type: ignore[misc]
 def game_chats(id: int) -> list[ShortChatModel] | ErrorResponse:
     """
     Get the chats in a game.
     """
     if id not in games:
         return {"message": "Game not found"}, 404
-    return game_get(id)["chats"]
+    game = games[id]
+    mod_token, player = get_permissions(game, request.headers)
+    return [
+        ShortChatModel(
+            id = chat_id,
+            total_messages = len(chat),
+        )
+        for chat_id, chat in game.chats.items()
+        if mod_token == game.mod_token or chat.has_read_perms(game, player)
+    ]
 
 @api.get("/games/<int:id>/players/<string:name>")
-@validate()
+@validate()  # type: ignore[misc]
 def game_player(id: int, name: str) -> PlayerResponseModel | ErrorResponse:
     """
     Get a player in a game.
@@ -427,7 +453,7 @@ def game_player(id: int, name: str) -> PlayerResponseModel | ErrorResponse:
     )
 
 @api.get("/games/<int:id>/players/<string:name>/abilities")
-@validate()
+@validate()  # type: ignore[misc]
 def game_player_abilities(id: int, name: str) -> PlayerAbiltiesResponseModel | ErrorResponse:
     """
     Get the abilities of a player in a game.
@@ -491,7 +517,7 @@ def game_player_abilities(id: int, name: str) -> PlayerAbiltiesResponseModel | E
     )
 
 @api.post("/games/<int:id>/players/<string:name>/abilities")
-@validate()
+@validate()  # type: ignore[misc]
 def game_player_queue_ability(id: int, name: str, body: PlayerQueueAbilityRequestModel) -> EmptyResponse | ErrorResponse:
     """
     Queue an ability for a player in a game.
