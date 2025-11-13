@@ -38,6 +38,9 @@ def get_permissions(game: Game, headers: Headers) -> tuple[str | None, m.Player 
 
 # API V1 MODELS #
 
+ErrorResponse = tuple[dict[str, str], int]
+EmptyResponse = tuple[Literal[''], int]
+
 class GameSummaryModel(BaseModel):
     id: int
     players: list[str]
@@ -141,6 +144,17 @@ class GameResponseModel(BaseModel):
     players: list[PlayerModel]
     chats: list[ChatModel]
 
+class GamePutRequestModel(BaseModel):
+    day_no: int | None = None
+    phase: m.Phase | None = None
+
+class GamePatchRequestModel(BaseModel):
+    actions: list[Literal[
+        "dequeue",
+        "resolve",
+        "next_phase",
+    ]]
+
 # API V1 ENDPOINTS #
 
 api = Blueprint("api_v1", __name__, url_prefix="/api/v1")
@@ -200,7 +214,7 @@ def game_create(body: GameCreateRequestModel) -> tuple[GameCreateResponseModel, 
 
 @api.get("/games/<int:id>")
 @validate()
-def game_get(id: int) -> GameResponseModel | tuple[dict[str, str], int]:
+def game_get(id: int) -> GameResponseModel | ErrorResponse:
     """
     Get a game.
     """
@@ -236,6 +250,56 @@ def game_get(id: int) -> GameResponseModel | tuple[dict[str, str], int]:
             if mod_token == game.mod_token or chat.has_read_perms(game, player)
         ],
     )
+
+@api.put("/games/<int:id>")
+@validate()
+def game_put(id: int, body: GamePutRequestModel) -> EmptyResponse | ErrorResponse:
+    """
+    Update a game.
+    """
+    if id not in games:
+        return {"message": "Game not found"}, 404
+    game = games[id]
+    mod_token, player = get_permissions(game, request.headers)
+    if mod_token is None and player is None:
+        return {"message": "Not authenticated"}, 401
+    if mod_token != game.mod_token:
+        return {"message": "Not the moderator"}, 403
+    if body.day_no is not None:
+        game.day_no = body.day_no
+    if body.phase is not None:
+        game.phase = body.phase
+    return "", 204
+
+@api.patch("/games/<int:id>")
+@validate()
+def game_patch(id: int, body: GamePatchRequestModel) -> EmptyResponse | ErrorResponse:
+    """
+    Update a game.
+    """
+    if id not in games:
+        return {"message": "Game not found"}, 404
+    game = games[id]
+    mod_token, player = get_permissions(game, request.headers)
+    if mod_token is None and player is None:
+        return {"message": "Not authenticated"}, 401
+    if mod_token != game.mod_token:
+        return {"message": "Not the moderator"}, 403
+    for action in body.actions:
+        if action == "dequeue":
+            for v in game.queued_visits:
+                if v.is_active_time(game):
+                    game.visits.append(v)
+            game.queued_visits.clear()
+        elif action == "resolve":
+            r.resolve_game(game)
+        elif action == "next_phase":
+            if game.phase == m.Phase.DAY:
+                game.phase = m.Phase.NIGHT
+            else:
+                game.phase = m.Phase.DAY
+                game.day_no += 1
+    return "", 204
 
 # TESTING #
 
