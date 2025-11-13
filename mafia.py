@@ -5,8 +5,7 @@ Mafia game framework.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence, Iterator
-from types import EllipsisType
-from typing import Any, Literal, Self, TypeGuard, TypeVar, cast
+from typing import Any, Generic, Literal, TypeGuard, TypeVar, cast
 from enum import Enum, auto, IntEnum
 from dataclasses import InitVar, dataclass, field
 
@@ -18,8 +17,8 @@ class VisitStatus(IntEnum):
 
 
 class Phase(Enum):
-    DAY = auto()
-    NIGHT = auto()
+    DAY = "day"
+    NIGHT = "night"
 
 
 class WinResult(Enum):
@@ -171,6 +170,8 @@ class Role:
         if passives is not None:
             self.passives = passives
         if shared_actions is not None:
+            # will be removed in the future
+            print("Warning: shared_actions is deprecated.")
             self.shared_actions = shared_actions
         if tags is not None:
             self.tags = tags
@@ -180,6 +181,8 @@ class Role:
     def __init_subclass__(cls) -> None:
         if "id" not in cls.__dict__:
             cls.id = cls.__name__.replace("_", " ")
+        if cls.shared_actions != ():
+            print("Warning: shared_actions is deprecated.")
 
     def __str__(self) -> str:
         return self.id
@@ -475,7 +478,7 @@ class Chat(list[ChatMessage]):
         return True
 
     def has_write_perms(self, game: Game, player: Player | None) -> bool:
-        return player is not None and player in game.alive_players
+        return player is not None and player in game.alive_players and game.phase not in game.locked_chat_phases
 
     def read_perms(self, game: Game) -> Iterator[Player]:
         return filter(lambda p: self.has_read_perms(game, p), game.players)
@@ -562,14 +565,36 @@ class Player:
         """Get all visits that are targeting this player."""
         return filter(lambda v: self in v.targets, game.visits)
 
-
 @dataclass(eq=False)
 class Game:
+    def __post_init__(self, start_phase: Any | None) -> None:
+        if start_phase is not None:
+            self.phase = start_phase
+    
     day_no: int = 1
-    phase: Phase = Phase.DAY
+    phase_order: tuple[Any, ...] = (Phase.DAY, Phase.NIGHT)
     players: list[Player] = field(default_factory=list, kw_only=True)
     visits: list[Visit] = field(default_factory=list, kw_only=True)
     chats: dict[str, Chat] = field(default_factory=dict, kw_only=True)
+    phase_idx: int = field(default=0, kw_only=True)
+    start_phase: InitVar[Any | None] = field(default=None, kw_only=True)
+    locked_chat_phases: frozenset[Any] = field(default=frozenset({Phase.NIGHT}), kw_only=True)
+
+    @property
+    def phase(self) -> Any:
+        return self.phase_order[self.phase_idx]
+
+    @phase.setter
+    def phase(self, value: Any) -> None:
+        self.phase_idx = self.phase_order.index(value)
+
+    def next_phase(self) -> None:
+        """Advances the game to the next phase."""
+        if self.phase_idx + 1 >= len(self.phase_order):
+            self.phase_idx = 0
+            self.day_no += 1
+        else:
+            self.phase_idx += 1
 
     @property
     def alive_players(self) -> Iterator[Player]:

@@ -46,7 +46,7 @@ def test_catastrophic_rule() -> None:
     town = examples.Town()
     mafia = examples.Mafia()
 
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
     alice = m.Player("Alice", cop, town)
     bob = m.Player("Bob", jailkeeper, town)
     eve = m.Player("Eve", roleblocker, mafia)
@@ -137,7 +137,7 @@ def test_protection() -> None:
     town = examples.Town()
     mafia = examples.Mafia()
 
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
     alice = m.Player("Alice", examples.Doctor(), town)
     bob = m.Player("Bob", examples.Vanilla(), town)
     eve = m.Player("Eve", examples.Vanilla(), mafia)
@@ -168,7 +168,7 @@ def test_xshot_macho() -> None:
     town = examples.Town()
     mafia = examples.Mafia()
 
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
     alice = m.Player("Alice", examples.Doctor(), town)
     bob = m.Player("Bob", examples.XShot(1)(examples.Macho)(), town)
     carol = m.Player("Carol", examples.XShot(1)(examples.Macho)(), town)
@@ -204,7 +204,7 @@ def test_tracker_roleblocker() -> None:
     town = examples.Town()
     mafia = examples.Mafia()
 
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
     alice = m.Player("Alice", examples.Roleblocker(), town)
     bob = m.Player("Bob", examples.Tracker(), town)
     eve = m.Player("Eve", examples.Vanilla(), mafia)
@@ -237,7 +237,7 @@ def test_juggernaut() -> None:
     town = examples.Town()
     mafia = examples.Mafia()
 
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
     alice = m.Player("Alice", examples.Roleblocker(), town)
     bob = m.Player("Bob", examples.Vanilla(), town)
     eve = m.Player("Eve", examples.Juggernaut(), mafia)
@@ -267,7 +267,7 @@ def test_investigative_fail() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
     alice = m.Player("Alice", examples.Roleblocker(), town)
     bob = m.Player("Bob", examples.Cop(), town)
@@ -293,7 +293,7 @@ def test_ascetic() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
     alice = m.Player("Alice", examples.Ascetic(), town)
     bob = m.Player("Bob", examples.Doctor(), town)
@@ -316,7 +316,7 @@ def test_detective() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
     alice = m.Player("Alice", examples.Detective(), town)
     bob = m.Player("Bob", examples.Vanilla(), town)
@@ -346,7 +346,7 @@ def test_jack_of_all_trades() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
     joat = examples.Jack_of_All_Trades(
         examples.Cop,
@@ -376,7 +376,7 @@ def test_hider() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
     alice = m.Player("Alice", examples.Hider(), town)
     bob = m.Player("Bob", examples.Vanilla(), town)
@@ -403,7 +403,7 @@ def test_traffic_analyst() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
     alice = m.Player("Alice", examples.Traffic_Analyst(), town)
     bob = m.Player("Bob", examples.Mason(), town)
@@ -444,7 +444,7 @@ def test_universal_backup() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
     alice = m.Player("Alice", examples.Universal_Backup(), town)
     bob = m.Player("Bob", examples.Vigilante(), town)
@@ -473,7 +473,7 @@ def test_activated() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
     activated = examples.Activated()
 
     alice = m.Player("Alice", activated(examples.Bulletproof)(), town)
@@ -499,7 +499,7 @@ def test_ninja() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
     alice = m.Player("Alice", examples.Watcher(), town)
     bob = m.Player("Bob", examples.Vanilla(), town)
@@ -526,7 +526,7 @@ def test_personal() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
     personal = examples.Personal()
 
     alice = m.Player("Alice", personal(examples.Watcher)(), town)
@@ -553,7 +553,7 @@ def test_combine() -> None:
     r = PrintResolver()
     town = examples.Town()
     mafia = examples.Mafia()
-    game = m.Game(1, m.Phase.NIGHT)
+    game = m.Game(start_phase=m.Phase.NIGHT)
     combined = m.Role.combine(examples.Bulletproof, examples.Cop)
 
     alice = m.Player("Alice", combined(), town)
@@ -574,6 +574,239 @@ def test_combine() -> None:
         "Cop erroneously detected Town."
     )
 
+def test_api_v1() -> None:
+    from api_v1 import api, games
+    from flask import Flask
+    app = Flask(__name__)
+    app.register_blueprint(api)
+    with app.test_client() as client:
+        response = client.post(
+            "/api/v1/games",
+            json={
+                "players": ["Alice", "Bob", "Eve"],
+                "roles": [
+                    {
+                        "role": {
+                            "type": "role",
+                            "id": "Vanilla"
+                        },
+                        "alignment": "Town"
+                    },
+                    {
+                        "role": {
+                            "type": "combined_role",
+                            "id": "Jack_of_All_Trades",
+                            "roles": [
+                                {
+                                    "type": "role",
+                                    "id": "Doctor"
+                                },
+                                {
+                                    "type": "role",
+                                    "id": "Cop"
+                                }
+                            ]
+                        },
+                        "alignment": "Town"
+                    },
+                    {
+                        "role": {
+                            "type": "modifier",
+                            "id": "XShot",
+                            "params": {
+                                "max_uses": 1
+                            },
+                            "role": {
+                                "type": "role",
+                                "id": "Juggernaut"
+                            }
+                        },
+                        "alignment": "Mafia"
+                    },
+                ],
+                "shuffle_roles": False,
+            }
+        )
+        if response.status_code != 201:
+            print(response.status_code, response.json, "\n")
+            raise AssertionError("Expected 201 Created")
+        elif response.json is None:
+            raise AssertionError("Expected JSON response")
+        else:
+            print(response.status_code, response.json, "\n")
+            game_id = response.json["id"]
+            mod_token = response.json["mod_token"]
+
+    with app.test_client() as client:
+        response = client.get(
+            f"/api/v1/games/{game_id}",
+            headers={"Authorization-Mod-Token": mod_token}
+        )
+        if response.status_code != 200:
+            print(response.status_code, response.json, "\n")
+            raise AssertionError("Expected 200 OK")
+        elif response.json is None:
+            raise AssertionError("Expected JSON response")
+        else:
+            print(response.status_code, response.json, "\n")
+            assert response.json["players"][0]["name"] == "Alice"
+            assert response.json["players"][0]["role_name"] == "Vanilla Townie"
+
+    with app.test_client() as client:
+        response = client.post(
+            f"/api/v1/games/{game_id}/chats/global",
+            json={"content": "Hello, world!"},
+            headers={"Authorization-Player-Name": "Alice"},
+        )
+        print(response.status_code, response.json, "\n")
+        assert response.status_code == 204, "Expected 204 No Content"
+        assert response.json is None, "Expected no JSON response"
+
+    with app.test_client() as client:
+        response = client.get(f"/api/v1/games/{game_id}/chats/global/messages")
+        print(response.status_code, response.json, "\n")
+        assert response.status_code == 200, "Expected 200 OK"
+        assert response.json is not None, "Expected JSON response"
+        assert response.json["messages"][0]["content"] == "Hello, world!", "Expected message to be sent"
+        assert response.json["messages"][0]["author"] == "Alice", "Expected message to be sent by Alice"
+
+    with app.test_client() as client:
+        response = client.get(
+            f"/api/v1/games/{game_id}/chats/faction:Mafia", 
+            headers={"Authorization-Player-Name": "Alice"}
+        )
+        print(response.status_code, response.json, "\n")
+        assert response.status_code == 404, "Expected 404 Not Found"
+        assert response.json is not None, "Expected JSON response"
+        assert response.json["message"] == "Chat not found", "Expected 'Chat not found'"
+
+    with app.test_client() as client:
+        response = client.get(
+            f"/api/v1/games/{game_id}/chats/faction:Mafia/messages",
+            headers={"Authorization-Player-Name": "Eve"}
+        )
+        print(response.status_code, response.json, "\n")
+        assert response.status_code == 200, "Expected 200 OK"
+        assert response.json is not None, "Expected JSON response"
+        assert response.json["messages"][0]["content"] == "Eve is a Mafia 1-Shot Juggernaut.", "Expected message to be sent"
+        assert response.json["messages"][0]["author"] == "Mafia", "Expected message to be sent by Mafia"
+
+    with app.test_client() as client:
+        response = client.post(
+            f"/api/v1/games/{game_id}/players/Bob/abilities",
+            json={
+                "actions": {
+                    "Doctor": {
+                        "targets": ["Alice"],
+                    },
+                }
+            },
+            headers={"Authorization-Player-Name": "Bob"}
+        )
+        print(response.status_code, response.json, "\n")
+        assert response.status_code == 400, "Expected 400 Bad Request"
+        assert response.json is not None, "Expected JSON response"
+        assert response.json["message"] == "Check failed for 'Doctor': Alice", "Expected 'Check failed for 'Doctor': Alice'"
+
+    with app.test_client() as client:
+        response = client.patch(
+            f"/api/v1/games/{game_id}",
+            json={"actions": ["next_phase"]},
+            headers={"Authorization-Mod-Token": mod_token}
+        )
+        print(response.status_code, response.json, "\n")
+        assert response.status_code == 204, "Expected 204 No Content"
+        assert response.json is None, "Expected no JSON response"
+
+    with app.test_client() as client:
+        response = client.post(
+            f"/api/v1/games/{game_id}/players/Bob/abilities",
+            json={
+                "actions": {
+                    "Doctor": {
+                        "targets": ["Alice"]
+                    },
+                }
+            },
+            headers={"Authorization-Player-Name": "Bob"}
+        )
+        print(response.status_code, response.json, "\n")
+        assert response.status_code == 204, "Expected 204 No Content"
+        assert response.json is None, "Expected no JSON response"
+
+    with app.test_client() as client:
+        response = client.post(
+            f"/api/v1/games/{game_id}/players/Eve/abilities",
+            json={
+                "shared_actions": {
+                    "Mafia Factional Kill": {
+                        "targets": ["Alice"]
+                    },
+                }
+            },
+            headers={"Authorization-Player-Name": "Eve"}
+        )
+        print(response.status_code, response.json, "\n")
+        assert response.status_code == 204, "Expected 204 No Content"
+        assert response.json is None, "Expected no JSON response"
+
+    with app.test_client() as client:
+        response = client.patch(
+            f"/api/v1/games/{game_id}",
+            json={"actions": ["resolve"]},
+            headers={"Authorization-Mod-Token": mod_token}
+        )
+        print(response.status_code, response.json, "\n")
+        assert response.status_code == 204, "Expected 204 No Content"
+        assert response.json is None, "Expected no JSON response"
+
+    with app.test_client() as client:
+        response = client.get(f"/api/v1/games/{game_id}")
+        print(response.status_code, response.json, "\n")
+        assert response.status_code == 200, "Expected 200 OK"
+        assert response.json is not None, "Expected JSON response"
+        assert response.json["players"][0]["is_alive"], "Expected Alice to be alive"
+        assert response.json["players"][1]["is_alive"], "Expected Bob to be alive"
+        assert response.json["players"][2]["is_alive"], "Expected Eve to be alive"
+        assert response.json["phase"] == m.Phase.NIGHT.value, "Expected phase to be NIGHT"
+
+    with app.test_client() as client:
+        response = client.post(
+            f"/api/v1/games/{game_id}/players/Eve/abilities",
+            json={
+                "actions": {
+                    "Juggernaut": {
+                        "targets": ["Eve"]
+                    },
+                },
+                "shared_actions": {
+                    "Mafia Factional Kill": {
+                        "targets": ["Bob"]
+                    }
+                }
+            },
+            headers={"Authorization-Player-Name": "Eve"}
+        )
+        print(response.status_code, response.json, "\n")
+        assert response.status_code == 204, "Expected 204 No Content"
+        assert response.json is None, "Expected no JSON response"
+
+    with app.test_client() as client:
+        response = client.post(
+            f"/api/v1/games/{game_id}/players/Bob/abilities",
+            json={
+                "actions": {
+                    "Doctor": {
+                        "targets": ["Alice"]
+                    },
+                }
+            },
+            headers={"Authorization-Player-Name": "Bob"}
+        )
+        print(response.status_code, response.json, "\n")
+        assert response.status_code == 400, "Expected 400 Bad Request"
+        assert response.json is not None, "Expected JSON response"
+        assert response.json["message"] == "Check failed for 'Doctor': Alice", "Expected 'Check failed for 'Doctor': Alice'"
 
 # DO TESTS #
 
@@ -595,6 +828,7 @@ TESTS: dict[str, Callable[[], None]] = {
     "test_ninja": test_ninja,
     "test_personal": test_personal,
     "test_combine": test_combine,
+    "test_api_v1": test_api_v1
 }
 
 
