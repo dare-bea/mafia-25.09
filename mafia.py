@@ -172,6 +172,8 @@ class Role:
         if passives is not None:
             self.passives = passives
         if shared_actions is not None:
+            # will be removed in the future
+            print("Warning: shared_actions is deprecated.")
             self.shared_actions = shared_actions
         if tags is not None:
             self.tags = tags
@@ -181,6 +183,8 @@ class Role:
     def __init_subclass__(cls) -> None:
         if "id" not in cls.__dict__:
             cls.id = cls.__name__.replace("_", " ")
+        if cls.shared_actions != ():
+            print("Warning: shared_actions is deprecated.")
 
     def __str__(self) -> str:
         return self.id
