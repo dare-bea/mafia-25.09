@@ -1991,38 +1991,48 @@ COMBINED_ROLES: dict[str, Callable[..., type[Role]]] = {}
 ALIGNMENTS: dict[str, type[Alignment] | Callable[..., Alignment]] = {}
 MODIFIERS: dict[str, type[Modifier] | Callable[..., Modifier]] = {}
 
-# temporary variables, all deleted afterwards so it won't get exported
-variables = vars().copy()
-rt = None
-args = ()
-name = ""
-obj = None
-
-for name, obj in variables.items():
-    if not callable(obj) or getattr(obj, "__module__", None) != __name__:
-        continue
-    if isinstance(obj, type):
-        if issubclass(obj, Role):
-            ROLES[name] = obj
-        if issubclass(obj, Alignment):
-            ALIGNMENTS[name] = obj
-        if issubclass(obj, Modifier):
-            MODIFIERS[name] = obj
-    else:
-        rt = get_type_hints(obj).get("return", None)
-        if rt is not None and isinstance(rt, type):
-            if issubclass(rt, Role):
+def index_types(namespace: dict[str, Any]) -> None:
+    """
+    Index all roles, alignments, and modifiers in the given namespace.
+    Access them through the ROLES, COMBINED_ROLES, ALIGNMENTS, and MODIFIERS dictionaries.
+    """
+    global ROLES, COMBINED_ROLES, ALIGNMENTS, MODIFIERS
+    
+    variables = namespace.copy()  # prevent errors if namespace is modified during iteration
+    
+    for name, obj in variables.items():
+        if not callable(obj):
+            continue
+        if isinstance(obj, type):
+            if issubclass(obj, Role):
                 ROLES[name] = obj
-            if issubclass(rt, Alignment):
+            if issubclass(obj, Alignment):
                 ALIGNMENTS[name] = obj
-            if issubclass(rt, Modifier):
+            if issubclass(obj, Modifier):
                 MODIFIERS[name] = obj
-        if (
-            get_origin(rt) is type
-            and len(args := get_args(rt)) > 0
-            and isinstance(args[0], type)  # type: ignore[misc]
-            and issubclass(args[0], Role)  # type: ignore[misc]
-        ):
-            COMBINED_ROLES[name] = obj
+        else:
+            rt = get_type_hints(obj).get("return", None)
+            if rt is not None and isinstance(rt, type):
+                if issubclass(rt, Role):
+                    ROLES[name] = obj
+                if issubclass(rt, Alignment):
+                    ALIGNMENTS[name] = obj
+                if issubclass(rt, Modifier):
+                    MODIFIERS[name] = obj
+            if (
+                get_origin(rt) is type
+                and len(args := get_args(rt)) > 0
+                and isinstance(args[0], type)  # type: ignore[misc]
+                and issubclass(args[0], Role)  # type: ignore[misc]
+            ):
+                COMBINED_ROLES[name] = obj
 
-del variables, name, obj, rt, args
+def index_module_types(module_name: str) -> None:
+    """Index all roles, alignments, and modifiers in the given module by name."""
+    index_types({
+        name: obj for name, obj in vars().items()
+        if getattr(obj, "__module__", None) != module_name
+        and not name.startswith("_")
+    })
+
+index_module_types(__name__)
