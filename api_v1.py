@@ -1,3 +1,4 @@
+from datetime import datetime
 from secrets import token_urlsafe
 from typing import Any, Callable, Literal, cast
 from itertools import count
@@ -130,12 +131,16 @@ class GameCreateResponseModel(BaseModel):
     id: int
     mod_token: str
 
+class ShortPartialPlayerModel(BaseModel):
+    name: str
+    is_alive: bool
+
 class ShortPlayerModel(BaseModel):
     name: str
     is_alive: bool
-    role_name: str | None = None
-    role: str | None = None
-    alignment: str | None = None
+    role_name: str
+    role: str
+    alignment: str
 
 class ShortChatModel(BaseModel):
     id: str
@@ -145,7 +150,7 @@ class GameResponseModel(BaseModel):
     id: int
     day_no: int
     phase: m.Phase
-    players: list[ShortPlayerModel]
+    players: list[ShortPlayerModel | ShortPartialPlayerModel]
     chats: list[ShortChatModel]
 
 class GamePutRequestModel(BaseModel):
@@ -211,6 +216,33 @@ class PlayerQueueAbilityRequestModel(BaseModel):
     actions: dict[str, PlayerQueueAbilityModel | None] = Field(default_factory=dict)
     shared_actions: dict[str, PlayerQueueAbilityModel | None] = Field(default_factory=dict)
 
+class ChatQueryModel(BaseModel):
+    start: int = 0
+    limit: int = 25
+
+class ChatMessageModel(BaseModel):
+    author: str
+    timestamp: datetime
+    content: str
+
+class PlayerPMResponseModel(BaseModel):
+    total_messages: int
+    messages: list[ChatMessageModel]
+
+class ChatPostRequestModel(BaseModel):
+    content: str
+
+class ChatGetResponseModel(BaseModel):
+    chat_id: str
+    read_perms: list[str]
+    write_perms: list[str]
+    total_messages: int
+
+class ChatMessagesResponseModel(BaseModel):
+    chat_id: str
+    total_messages: int
+    messages: list[ChatMessageModel]
+
 # API V1 ENDPOINTS #
 
 api = Blueprint("api_v1", __name__, url_prefix="/api/v1")
@@ -257,7 +289,7 @@ def game_create(body: GameCreateRequestModel) -> tuple[GameCreateResponseModel, 
         if (a, r.alignment_id) not in alignments:
             alignments[a, r.alignment_id] = a(id=r.alignment_id, demonym=r.alignment_demonym, role_names=r.alignment_role_names)
 
-    game = Game(body.day_no, body.phase)
+    game = Game(body.day_no, start_phase=body.phase)
 
     for player_name, role in zip(body.players, roles):
         game.add_player(m.Player(player_name, role.role.value()(**role.role_params), alignments[role.alignment_value(), role.alignment_id]))
@@ -291,7 +323,7 @@ def game_get(id: int) -> GameResponseModel | ErrorResponse:
                 alignment = p.alignment.id,
             )
             if mod_token == game.mod_token or player is p or not p.is_alive or (player is not None and p in player.known_players) else 
-            ShortPlayerModel(
+            ShortPartialPlayerModel(
                 name = p.name,
                 is_alive = p.is_alive,
             )
@@ -348,6 +380,10 @@ def game_patch(id: int, body: GamePatchRequestModel) -> EmptyResponse | ErrorRes
                     game.visits.append(v)
             game.queued_visits.clear()
         elif action == "resolve":
+            for v in game.queued_visits:
+                if v.is_active_time(game):
+                    game.visits.append(v)
+            game.queued_visits.clear()
             r.resolve_game(game)
         elif action == "next_phase":
             game.next_phase()
@@ -355,7 +391,7 @@ def game_patch(id: int, body: GamePatchRequestModel) -> EmptyResponse | ErrorRes
 
 @api.get("/games/<int:id>/players")
 @validate()  # type: ignore[misc]
-def game_players(id: int) -> list[ShortPlayerModel] | ErrorResponse:
+def game_players(id: int) -> list[ShortPlayerModel | ShortPartialPlayerModel] | ErrorResponse:
     """
     Get the players in a game.
     """
@@ -372,7 +408,7 @@ def game_players(id: int) -> list[ShortPlayerModel] | ErrorResponse:
             alignment = p.alignment.id,
         )
         if mod_token == game.mod_token or player is p or not p.is_alive or (player is not None and p in player.known_players) else 
-        ShortPlayerModel(
+        ShortPartialPlayerModel(
             name = p.name,
             is_alive = p.is_alive,
         )
@@ -546,7 +582,7 @@ def game_player_queue_ability(id: int, name: str, body: PlayerQueueAbilityReques
             if invalid_targets:
                 return {"message": f"Invalid targets for '{ability_id}': {', '.join(invalid_targets)}"}, 400
             if not valid_actions[ability_id].check(game, player, [valid_players[t] for t in requested_visit.targets]):
-                return {"message": f"Invalid targets for '{ability_id}'"}, 400
+                return {"message": f"Check failed for '{ability_id}': {', '.join(requested_visit.targets)}"}, 400
 
     for ability_id, requested_visit in body.shared_actions.items():
         if ability_id not in valid_shared_actions:
@@ -559,7 +595,7 @@ def game_player_queue_ability(id: int, name: str, body: PlayerQueueAbilityReques
                 return {"message": f"Invalid targets for '{ability_id}'"}, 400
 
     for ability_id, requested_visit in body.actions.items():
-        prev_visit = next((v for v in game.queued_visits if v.actor == player and v.ability == valid_actions[ability_id]), None)
+        prev_visit = next((v for v in game.queued_visits if v.actor == player), None)
         if prev_visit is not None:
             game.queued_visits.remove(prev_visit)
         if requested_visit is not None:
@@ -588,75 +624,130 @@ def game_player_queue_ability(id: int, name: str, body: PlayerQueueAbilityReques
 
     return "", 204
 
-# TESTING #
-
-if __name__ == "__main__":
-    d = {
-        "players": ["Alice", "Bob", "Eve"],
-        "roles": [
-            # Vanilla Townie
-            {
-                "role": {
-                    "type": "role",
-                    "id": "Vanilla"
-                },
-                "alignment": "Town"
-            },
-            # Town JoAT Doctor Cop
-            {
-                "role": {
-                    "type": "combined_role",
-                    "id": "Jack_of_All_Trades",
-                    "roles": [
-                        {
-                            "type": "role",
-                            "id": "Doctor"
-                        },
-                        {
-                            "type": "role",
-                            "id": "Cop"
-                        }
-                    ]
-                },
-                "alignment": "Town"
-            },
-            # Mafia 1-Shot Juggernaut
-            {
-                "role": {
-                    "type": "modifier",
-                    "id": "XShot",
-                    "params": {
-                        "max_uses": 1
-                    },
-                    "role": {
-                        "type": "role",
-                        "id": "Juggernaut"
-                    }
-                },
-                "alignment": "Mafia"
-            },
+@api.get("/games/<int:id>/players/<string:name>/messages")
+@validate()  # type: ignore[misc]
+def game_player_messages(id: int, name: str, query: ChatQueryModel) -> PlayerPMResponseModel | ErrorResponse:
+    """
+    Get a player's private messages.
+    """
+    if id not in games:
+        return {"message": "Game not found"}, 404
+    game = games[id]
+    player = next((p for p in game.players if p.name == name), None)
+    if player is None:
+        return {"message": "Player not found"}, 404
+    mod_token, player_auth = get_permissions(game, request.headers)
+    if mod_token is None and player_auth is None:
+        return {"message": "Not authenticated"}, 401
+    if mod_token != game.mod_token and not player.private_messages.has_read_perms(game, player_auth):
+        return {"message": "Not the moderator or authorized player"}, 403
+    start = 0 if query.start < 0 else query.start
+    limit = 25 if query.limit < 0 else query.limit
+    return PlayerPMResponseModel(
+        total_messages = len(player.private_messages),
+        messages = [
+            ChatMessageModel(
+                author = str(msg.sender),
+                timestamp = datetime.now(),
+                content = msg.content,
+            )
+            for idx, msg in enumerate(player.private_messages[start : start + limit])
         ]
-    }
-    GameCreateRequestModel.model_validate(d)
-    print("Validated!")
+    )
 
-    from flask import Flask
-    app = Flask(__name__)
-    app.register_blueprint(api)
+@api.post("/games/<int:id>/players/<string:name>/messages")
+@validate()  # type: ignore[misc]
+def game_player_send_message(id: int, name: str, body: ChatPostRequestModel) -> EmptyResponse | ErrorResponse:
+    """
+    Send a private message to a player.
+    """
+    if id not in games:
+        return {"message": "Game not found"}, 404
+    game = games[id]
+    player = next((p for p in game.players if p.name == name), None)
+    if player is None:
+        return {"message": "Player not found"}, 404
+    mod_token, player_auth = get_permissions(game, request.headers)
+    if mod_token is None and player_auth is None:
+        return {"message": "Not authenticated"}, 401
+    if mod_token != game.mod_token and player.private_messages.has_write_perms(game, player_auth):
+        return {"message": "Not the moderator or authorized player"}, 403
+    player.private_messages.send(player_auth.name if player_auth is not None else "Moderator", body.content)
+    return "", 204
 
-    with app.test_client() as client:
-        response = client.post("/api/v1/games", json=d)
-        print(response.status_code, response.json, "\n")
+@api.get("/games/<int:id>/chats/<string:chat_id>")
+@validate()  # type: ignore[misc]
+def game_chat(id: int, chat_id: str) -> ChatGetResponseModel | ErrorResponse:
+    """
+    Get a chat in a game.
+    """
+    if id not in games:
+        return {"message": "Game not found"}, 404
+    game = games[id]
+    mod_token, player = get_permissions(game, request.headers)
+    chat = game.chats.get(chat_id)
+    read_perms = False if chat is None else chat.has_read_perms(game, player)
+    if mod_token is None and player is None and not read_perms:
+        return {"message": "Not authenticated"}, 401
+    if chat is None or (mod_token != game.mod_token and not read_perms):
+        return {"message": "Chat not found"}, 404
+    return ChatGetResponseModel(
+        chat_id = chat_id,
+        read_perms = [p.name for p in chat.read_perms(game)],
+        write_perms = [p.name for p in chat.write_perms(game)],
+        total_messages = len(chat)
+    )
 
-        if response.json is not None:
-            response2 = client.get(f"/api/v1/games/{response.json['id']}")
-            print(response2.status_code, response2.json, "\n")
+@api.get("/games/<int:id>/chats/<string:chat_id>/messages")
+@validate()  # type: ignore[misc]
+def game_chat_messages(id: int, chat_id: str, query: ChatQueryModel) -> ChatMessagesResponseModel | ErrorResponse:
+    """
+    Get the messages in a chat.
+    """
+    if id not in games:
+        return {"message": "Game not found"}, 404
+    game = games[id]
+    mod_token, player = get_permissions(game, request.headers)
+    chat = game.chats.get(chat_id)
+    read_perms = False if chat is None else chat.has_read_perms(game, player)
+    if mod_token is None and player is None and not read_perms:
+        return {"message": "Not authenticated"}, 401
+    if chat is None or (mod_token != game.mod_token and not read_perms):
+        return {"message": "Chat not found"}, 404
+    start = 0 if query.start < 0 else query.start
+    limit = 25 if query.limit < 0 else query.limit
+    return ChatMessagesResponseModel(
+        chat_id = chat_id,
+        total_messages = len(chat),
+        messages = [
+            ChatMessageModel(
+                author = str(msg.sender),
+                timestamp = datetime.now(),
+                content = msg.content,
+            )
+            for idx, msg in enumerate(chat[start : start + limit])
+        ],
+    )
 
-            response2 = client.get(f"/api/v1/games/{response.json['id']}", headers={"Authorization-Mod-Token": response.json['mod_token']})
-            print(response2.status_code, response2.json, "\n")
-
-            response2 =  client.get(f"/api/v1/games/{response.json['id']}", headers={"Authorization-Player-Name": "Alice"})
-            print(response2.status_code, response2.json, "\n")
-
-            response2 =  client.get(f"/api/v1/games/{response.json['id'] + 1}")
-            print(response2.status_code, response2.json, "\n")
+@api.post("/games/<int:id>/chats/<string:chat_id>")
+@api.post("/games/<int:id>/chats/<string:chat_id>/messages")
+@validate()  # type: ignore[misc]
+def game_chat_send_message(id: int, chat_id: str, body: ChatPostRequestModel) -> EmptyResponse | ErrorResponse:
+    """
+    Send a message to a chat.
+    """
+    if id not in games:
+        return {"message": "Game not found"}, 404
+    game = games[id]
+    mod_token, player = get_permissions(game, request.headers)
+    chat = game.chats.get(chat_id)
+    read_perms = False if chat is None else chat.has_read_perms(game, player)
+    write_perms = False if chat is None else chat.has_write_perms(game, player)
+    if mod_token is None and player is None and not read_perms and not write_perms:
+        return {"message": "Not authenticated"}, 401
+    if chat is None or (mod_token != game.mod_token and not read_perms):
+        return {"message": "Chat not found"}, 404
+    if mod_token != game.mod_token and not write_perms:
+        return {"message": "Not the moderator or player authorized to write to this chat"}, 403
+    chat.send(player.name if player is not None else "Moderator", body.content)
+    return "", 204

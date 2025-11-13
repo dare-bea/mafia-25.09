@@ -478,7 +478,7 @@ class Chat(list[ChatMessage]):
         return True
 
     def has_write_perms(self, game: Game, player: Player | None) -> bool:
-        return player is not None and player in game.alive_players
+        return player is not None and player in game.alive_players and game.phase not in game.locked_chat_phases
 
     def read_perms(self, game: Game) -> Iterator[Player]:
         return filter(lambda p: self.has_read_perms(game, p), game.players)
@@ -578,6 +578,7 @@ class Game:
     chats: dict[str, Chat] = field(default_factory=dict, kw_only=True)
     phase_idx: int = field(default=0, kw_only=True)
     start_phase: InitVar[Any | None] = field(default=None, kw_only=True)
+    locked_chat_phases: frozenset[Any] = field(default=frozenset({Phase.NIGHT}), kw_only=True)
 
     @property
     def phase(self) -> Any:
