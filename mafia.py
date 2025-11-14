@@ -564,6 +564,10 @@ class Player:
     def get_visitors(self, game: Game) -> Iterator[Visit]:
         """Get all visits that are targeting this player."""
         return filter(lambda v: self in v.targets, game.visits)
+    
+    def get_voters(self, game: Game) -> Iterator[Player]:
+        """Get all players that this player has received a vote from."""
+        return filter(lambda p: game.votes.get(p) == self, game.players)
 
 @dataclass(eq=False)
 class Game:
@@ -574,6 +578,7 @@ class Game:
     day_no: int = 1
     phase_order: tuple[Any, ...] = (Phase.DAY, Phase.NIGHT)
     players: list[Player] = field(default_factory=list, kw_only=True)
+    # History of visits: ALL visits are stored, even if they are not active.
     visits: list[Visit] = field(default_factory=list, kw_only=True)
     chats: dict[str, Chat] = field(default_factory=dict, kw_only=True)
     votes: dict[Player, Player | None] = field(default_factory=dict, kw_only=True)
@@ -590,13 +595,15 @@ class Game:
     def phase(self, value: Any) -> None:
         self.phase_idx = self.phase_order.index(value)
 
-    def next_phase(self) -> None:
+    def advance_phase(self) -> tuple[int, Any]:
         """Advances the game to the next phase."""
         if self.phase_idx + 1 >= len(self.phase_order):
             self.phase_idx = 0
             self.day_no += 1
         else:
             self.phase_idx += 1
+        self.votes.clear()
+        return (self.day_no, self.phase)
 
     @property
     def alive_players(self) -> Iterator[Player]:
@@ -619,3 +626,26 @@ class Game:
                     p.known_players.add(player)
                 if "informed" in p.role.tags and p.role.id == player.role.id:
                     p.known_players.add(player)
+
+    def is_voting_phase(self) -> bool:
+        return self.phase in self.voting_phases
+
+    def vote(self, player: Player, target: Player | None) -> None:
+        """Vote for a player to be eliminated by majority vote."""
+        self.votes[player] = target
+
+    def unvote(self, player: Player) -> None:
+        """Remove a player's vote."""
+        self.votes.pop(player, None)
+
+    def get_votes(self, target: Player | None) -> int:
+        """Get the number of votes a player has received."""
+        return sum(1 for p in self.votes if self.votes[p] == target)
+
+    def get_vote_counts(self) -> dict[Player | None, int]:
+        """Get the number of votes each player has received."""
+        counts: dict[Player | None, int] = {}
+        for p in self.votes.values():
+            counts[p] = counts.get(p, 0) + 1
+        return counts
+    

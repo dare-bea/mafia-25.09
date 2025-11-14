@@ -24,7 +24,7 @@ class Game(m.Game):
         self.queued_visits: list[m.Visit] = []
 
     def next_phase(self) -> None:
-        super().next_phase()
+        super().advance_phase()
         self.queued_visits.clear()
 
 r = ex.Resolver()

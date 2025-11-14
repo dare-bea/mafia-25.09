@@ -364,7 +364,7 @@ def api_v0_patch_game(id: int) -> Any:
     if "resolve" in body["actions"]:
         r.resolve_game(game)
     if "next_phase" in body["actions"]:
-        game.next_phase()
+        game.advance_phase()
     return "", 204
 
 
