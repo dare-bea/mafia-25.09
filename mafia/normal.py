@@ -1181,7 +1181,7 @@ def Jack_of_All_Trades(
     new_role.id = _id
     new_role.tags = tags
     return new_role
-
+Jack_of_All_Trades.id = "Jack of All Trades"
 
 class Medical_Student(Role):
     """Protects a Vanilla player from one kill."""
@@ -2031,6 +2031,9 @@ def index_types(namespace: dict[str, Any]) -> None:
             continue
         if obj.__module__ == "mafia.core":
             continue  # Core types are not implementations.
+        name = getattr(obj, "id",
+            getattr(obj, "__name__",
+            name))
         if isinstance(obj, type):
             if issubclass(obj, Role):
                 ROLES[name] = obj
