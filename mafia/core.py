@@ -5,7 +5,7 @@ Mafia game framework.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence, Iterator
-from typing import Any, Generic, Literal, TypeGuard, TypeVar, cast
+from typing import Any, Literal, TypeGuard, TypeVar, cast
 from enum import Enum, auto, IntEnum
 from dataclasses import InitVar, dataclass, field
 
