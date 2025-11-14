@@ -1,5 +1,5 @@
 """
-Simple Normal roles, abilities, and alignments.
+Normal roles, abilities, and alignments.
 """
 
 from abc import ABC, abstractmethod
@@ -8,7 +8,7 @@ from dataclasses import replace
 from itertools import product
 from typing import Any, TypeVar, get_args, get_origin, get_type_hints
 
-from mafia import (
+from mafia.core import (
     AbilityModifier,
     AbilityType,
     Alignment,
@@ -24,7 +24,7 @@ from mafia import (
     VisitStatus,
     WinResult,
 )
-from nodes import nodes_in_cycles
+from .nodes import nodes_in_cycles
 
 
 def roleblock_player(game: Game, player: Player, visit: Visit | None = None) -> VisitStatus:
@@ -2029,6 +2029,8 @@ def index_types(namespace: dict[str, Any]) -> None:
     for name, obj in variables.items():
         if not callable(obj):
             continue
+        if obj.__module__ == "mafia.core":
+            continue  # Core types are not implementations.
         if isinstance(obj, type):
             if issubclass(obj, Role):
                 ROLES[name] = obj
@@ -2048,17 +2050,9 @@ def index_types(namespace: dict[str, Any]) -> None:
             if (
                 get_origin(rt) is type
                 and len(args := get_args(rt)) > 0
-                and isinstance(args[0], type)  # type: ignore[misc]
-                and issubclass(args[0], Role)  # type: ignore[misc]
+                and isinstance(args[0], type)
+                and issubclass(args[0], Role)
             ):
                 COMBINED_ROLES[name] = obj
 
-def index_module_types(module_name: str) -> None:
-    """Index all roles, alignments, and modifiers in the given module by name."""
-    index_types({
-        name: obj for name, obj in vars().items()
-        if getattr(obj, "__module__", None) != module_name
-        and not name.startswith("_")
-    })
-
-index_module_types(__name__)
+index_types(vars())
