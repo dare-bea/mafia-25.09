@@ -3,9 +3,8 @@ Normal roles, abilities, and alignments.
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence, Callable, Collection, Generator
+from collections.abc import Sequence, Callable, Collection
 from dataclasses import replace
-from itertools import product
 from typing import Any, TypeVar, get_args, get_origin, get_type_hints
 
 from mafia.core import (
@@ -48,32 +47,6 @@ def visit_is_visible(visit: Visit, game: Game) -> bool:
         and not visit.is_self_target()
         and visit.is_active_time(game)
     )
-
-
-def has_valid_targets(
-    ability: Ability, game: Game, actor: Player, is_passive: bool = False
-) -> bool:
-    """Check if an ability has any valid targets."""
-    if is_passive:
-        return ability.check(game, actor)
-    if ability.target_count == 0:
-        return ability.check(game, actor, ())
-    for targets in product(game.players, repeat=ability.target_count):
-        if ability.check(game, actor, targets):
-            return True
-    return False
-
-
-def get_valid_targets(
-    ability: Ability, game: Game, actor: Player, is_passive: bool = False
-) -> Generator[tuple[Player, ...], None, None]:
-    """Get all valid targets for an ability."""
-    if is_passive and ability.check(game, actor):
-        yield tuple(actor for _ in range(ability.target_count))
-        return
-    for targets in product(game.players, repeat=ability.target_count):
-        if ability.check(game, actor, targets):
-            yield targets
 
 
 class Resolver:
@@ -1181,7 +1154,7 @@ def Jack_of_All_Trades(
     new_role.id = _id
     new_role.tags = tags
     return new_role
-Jack_of_All_Trades.id = "Jack of All Trades"
+Jack_of_All_Trades.id = "Jack of All Trades"  # type: ignore[attr-defined]
 
 class Medical_Student(Role):
     """Protects a Vanilla player from one kill."""
@@ -1538,13 +1511,13 @@ class Traffic_Analyst(Role):
                 "message" in a.tags
                 for a in [*target.actions, *target.shared_actions]
                 # Check if ability is actually usable (i.e. blocked by X-Shot)
-                if has_valid_targets(a, game, target)
+                if a.has_valid_targets(game, target)
                 and ("personal" not in visit.tags or "factional" not in a.tags)
             ) or any(
                 "message" in p.tags
                 for p in target.passives
                 # Check if ability is actually usable (i.e. blocked by X-Shot)
-                if has_valid_targets(p, game, target, True)
+                if p.valid_targets(game, target, True)
                 and ("personal" not in visit.tags or "factional" not in p.tags)
             )
             if has_private_chat or can_message_privately:

@@ -6,7 +6,6 @@ from flask import Blueprint, request
 from flask_pydantic import validate  # type: ignore[import-untyped]
 
 from mafia import core
-from mafia import normal
 from mafia.api.core import Game, resolver, get_permissions, games, game_count
 from . import models
 
@@ -288,7 +287,7 @@ def game_player_abilities(id: int, name: str) -> models.PlayerAbiltiesResponseMo
                 target_count = a.target_count,
                 targets = [
                     [t.name for t in targets]
-                    for targets in normal.get_valid_targets(a, game, player)
+                    for targets in a.valid_targets(game, player)
                 ] if a.target_count > 0 else [],
                 queued = [t.name for t in v.targets]
                 if (v := next((v for v in game.queued_visits if v.actor == player and v.ability == a), None)) is not None
@@ -316,7 +315,7 @@ def game_player_abilities(id: int, name: str) -> models.PlayerAbiltiesResponseMo
                 target_count = a.target_count,
                 targets = [
                     [t.name for t in targets]
-                    for targets in normal.get_valid_targets(a, game, player)
+                    for targets in a.valid_targets(game, player)
                 ] if a.target_count > 0 else [],
                 queued = [t.name for t in v.targets]
                 if (v := next((v for v in game.queued_visits if v.ability == a and v.actor.alignment == player.alignment), None)) is not None
@@ -549,3 +548,47 @@ def game_votes(id: int) -> models.GameVotesResponseModel | models.ErrorResponse:
         },
         no_elim_vote_count = [v.name for v in game.get_voters(None)]
     )
+
+@api_bp.post("/games/<int:id>/players/<string:name>/vote")
+@validate()  # type: ignore[misc]
+def game_player_vote(id: int, name: str, body: models.PlayerVoteRequestModel) -> models.EmptyResponse | models.ErrorResponse:
+    if id not in games:
+        return {"message": "Game not found"}, 404
+    game = games[id]
+    player = next((p for p in game.players if p.name == name), None)
+    if player is None:
+        return {"message": "Player not found"}, 404
+    mod_token, player_auth = get_permissions(game, request.headers)
+    if mod_token is None and player_auth is None:
+        return {"message": "Not authenticated"}, 401
+    if mod_token != game.mod_token and player_auth is not player:
+        return {"message": "Not the moderator or the player"}, 403
+    if not game.is_voting_phase():
+        return {"message": "Not a voting phase"}, 400
+    if body.target is None:
+        game.vote(player, None)
+    else:
+        target = next((p for p in game.players if p.name == body.target), None)
+        if target is None:
+            return {"message": "Target not found"}, 404
+        game.vote(player, target)
+    return "", 204
+
+@api_bp.delete("/games/<int:id>/players/<string:name>/vote")
+@validate()  # type: ignore[misc]
+def game_player_unvote(id: int, name: str) -> models.EmptyResponse | models.ErrorResponse:
+    if  id not in games:
+        return {"message": "Game not found"}, 404
+    game = games[id]
+    player = next((p for p in game.players if p.name == name), None)
+    if player is None:
+        return {"message": "Player not found"}, 404
+    mod_token, player_auth = get_permissions(game, request.headers)
+    if mod_token is None and player_auth is None:
+        return {"message": "Not authenticated"}, 401
+    if mod_token != game.mod_token and player_auth is not player:
+        return {"message": "Not the moderator or the player"}, 403
+    if not game.is_voting_phase():
+        return {"message": "Not a voting phase"}, 400
+    game.unvote(player)
+    return "", 204

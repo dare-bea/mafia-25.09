@@ -508,7 +508,7 @@ def api_v0_get_abilities(game_id: int, name: str) -> Any:
                 "immediate": a.immediate,
                 "target_count": a.target_count,
                 "targets": [
-                    [t.name for t in targets] for targets in normal.get_valid_targets(a, game, player)
+                    [t.name for t in targets] for targets in a.valid_targets(game, player)
                 ]
                 if a.target_count > 0
                 else [],
@@ -539,7 +539,7 @@ def api_v0_get_abilities(game_id: int, name: str) -> Any:
                 "immediate": a.immediate,
                 "target_count": a.target_count,
                 "targets": [
-                    [t.name for t in targets] for targets in normal.get_valid_targets(a, game, player)
+                    [t.name for t in targets] for targets in a.valid_targets(game, player)
                 ]
                 if a.target_count > 0
                 else [],

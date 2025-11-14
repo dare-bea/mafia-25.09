@@ -4,10 +4,11 @@ Mafia game framework.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Sequence, Iterator
+from collections.abc import Callable, Iterable, Sequence, Iterator, Generator
 from typing import Any, Literal, TypeGuard, TypeVar, cast
 from enum import Enum, auto, IntEnum
 from dataclasses import InitVar, dataclass, field
+from itertools import product
 
 
 class VisitStatus(IntEnum):
@@ -103,6 +104,31 @@ class Ability:
         self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit
     ) -> int:
         raise NotImplementedError
+
+    def has_valid_targets(
+        self, game: Game, actor: Player, is_passive: bool = False
+    ) -> bool:
+        """Check if an ability has any valid targets."""
+        if is_passive:
+            return self.check(game, actor)
+        if self.target_count == 0:
+            return self.check(game, actor, ())
+        for targets in product(game.players, repeat=self.target_count):
+            if self.check(game, actor, targets):
+                return True
+        return False
+    
+    
+    def valid_targets(
+        self, game: Game, actor: Player, is_passive: bool = False
+    ) -> Generator[tuple[Player, ...], None, None]:
+        """Get all valid targets for an ability."""
+        if is_passive and self.check(game, actor):
+            yield tuple(actor for _ in range(self.target_count))
+            return
+        for targets in product(game.players, repeat=self.target_count):
+            if self.check(game, actor, targets):
+                yield targets
 
 
 @dataclass(eq=False)
