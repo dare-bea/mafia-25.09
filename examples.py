@@ -260,13 +260,14 @@ class Resolver:
                 return p
         return None
 
-    def resolve_votes(self, game: Game) -> None:
+    def resolve_vote(self, game: Game) -> Player | None:
         if not game.is_voting_phase() or self.vote_ongoing(game):
-            return
+            return None
         elim = self.vote_elimination(game)
         if elim is not None:
             elim.kill("Vote")
         game.advance_phase()
+        return elim
 
 class Kill(Ability):
     """Kills a player."""

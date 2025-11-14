@@ -564,10 +564,6 @@ class Player:
     def get_visitors(self, game: Game) -> Iterator[Visit]:
         """Get all visits that are targeting this player."""
         return filter(lambda v: self in v.targets, game.visits)
-    
-    def get_voters(self, game: Game) -> Iterator[Player]:
-        """Get all players that this player has received a vote from."""
-        return filter(lambda p: game.votes.get(p) == self, game.players)
 
 @dataclass(eq=False)
 class Game:
@@ -594,6 +590,14 @@ class Game:
     @phase.setter
     def phase(self, value: Any) -> None:
         self.phase_idx = self.phase_order.index(value)
+
+    @property
+    def time(self) -> tuple[int, Any]:
+        return (self.day_no, self.phase)
+
+    @time.setter
+    def time(self, value: tuple[int, Any]) -> None:
+        self.day_no, self.phase = value
 
     def advance_phase(self) -> tuple[int, Any]:
         """Advances the game to the next phase."""
@@ -640,7 +644,10 @@ class Game:
 
     def get_votes(self, target: Player | None) -> int:
         """Get the number of votes a player has received."""
-        return sum(1 for p in self.votes if self.votes[p] == target)
+        return len(tuple(self.get_voters(target)))
+
+    def get_voters(self, target: Player | None) -> Iterator[Player]:
+        return (p for p in self.votes if self.votes[p] == target)
 
     def get_vote_counts(self) -> dict[Player | None, int]:
         """Get the number of votes each player has received."""
