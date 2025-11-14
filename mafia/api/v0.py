@@ -1,3 +1,8 @@
+"""
+API v0. Use API v1 instead for new projects, but this API will remain in case
+I didn't transfer over something from v0 to v1.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Callable

@@ -1,3 +1,9 @@
+"""
+Shared API code. Includes the 'database' (if you can call it that) and
+authorization functions. Also includes a derived Game class that adds extra
+fields for API use.
+"""
+
 from werkzeug.datastructures import Headers
 from secrets import token_urlsafe
 from typing import Any
