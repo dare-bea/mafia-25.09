@@ -234,3 +234,11 @@ class ChatMessagesResponseModel(BaseModel):
     chat_id: str
     total_messages: int
     messages: list[ChatMessageModel]
+
+class PlayerVoteRequestModel(BaseModel):
+    target: str | None
+
+class GameVotesResponseModel(BaseModel):
+    votes: dict[str, str | None]
+    vote_counts: dict[str, list[str]]
+    no_elim_vote_count: list[str]

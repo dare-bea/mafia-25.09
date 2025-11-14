@@ -478,7 +478,7 @@ class Chat(list[ChatMessage]):
         return True
 
     def has_write_perms(self, game: Game, player: Player | None) -> bool:
-        return player is not None and player in game.alive_players and game.phase not in game.locked_chat_phases
+        return player is not None and player in game.alive_players and game.phase not in game.chat_phases
 
     def read_perms(self, game: Game) -> Iterator[Player]:
         return filter(lambda p: self.has_read_perms(game, p), game.players)
@@ -574,11 +574,14 @@ class Game:
     day_no: int = 1
     phase_order: tuple[Any, ...] = (Phase.DAY, Phase.NIGHT)
     players: list[Player] = field(default_factory=list, kw_only=True)
+    # History of visits: ALL visits are stored, even if they are not active.
     visits: list[Visit] = field(default_factory=list, kw_only=True)
     chats: dict[str, Chat] = field(default_factory=dict, kw_only=True)
+    votes: dict[Player, Player | None] = field(default_factory=dict, kw_only=True)
     phase_idx: int = field(default=0, kw_only=True)
     start_phase: InitVar[Any | None] = field(default=None, kw_only=True)
-    locked_chat_phases: frozenset[Any] = field(default=frozenset({Phase.NIGHT}), kw_only=True)
+    chat_phases: frozenset[Any] = field(default=frozenset({Phase.DAY}), kw_only=True)
+    voting_phases: frozenset[Any] = field(default=frozenset({Phase.DAY}), kw_only=True)
 
     @property
     def phase(self) -> Any:
@@ -588,13 +591,23 @@ class Game:
     def phase(self, value: Any) -> None:
         self.phase_idx = self.phase_order.index(value)
 
-    def next_phase(self) -> None:
+    @property
+    def time(self) -> tuple[int, Any]:
+        return (self.day_no, self.phase)
+
+    @time.setter
+    def time(self, value: tuple[int, Any]) -> None:
+        self.day_no, self.phase = value
+
+    def advance_phase(self) -> tuple[int, Any]:
         """Advances the game to the next phase."""
         if self.phase_idx + 1 >= len(self.phase_order):
             self.phase_idx = 0
             self.day_no += 1
         else:
             self.phase_idx += 1
+        self.votes.clear()
+        return (self.day_no, self.phase)
 
     @property
     def alive_players(self) -> Iterator[Player]:
@@ -617,3 +630,29 @@ class Game:
                     p.known_players.add(player)
                 if "informed" in p.role.tags and p.role.id == player.role.id:
                     p.known_players.add(player)
+
+    def is_voting_phase(self) -> bool:
+        return self.phase in self.voting_phases
+
+    def vote(self, player: Player, target: Player | None) -> None:
+        """Vote for a player to be eliminated by majority vote."""
+        self.votes[player] = target
+
+    def unvote(self, player: Player) -> None:
+        """Remove a player's vote."""
+        self.votes.pop(player, None)
+
+    def get_votes(self, target: Player | None) -> int:
+        """Get the number of votes a player has received."""
+        return len(tuple(self.get_voters(target)))
+
+    def get_voters(self, target: Player | None) -> Iterator[Player]:
+        return (p for p in self.votes if self.votes[p] == target)
+
+    def get_vote_counts(self) -> dict[Player | None, int]:
+        """Get the number of votes each player has received."""
+        counts: dict[Player | None, int] = {}
+        for p in self.votes.values():
+            counts[p] = counts.get(p, 0) + 1
+        return counts
+    

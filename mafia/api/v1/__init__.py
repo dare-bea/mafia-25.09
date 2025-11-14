@@ -29,7 +29,7 @@ def game_list(query: models.GameListQueryModel) -> models.GameListResponseModel:
                 phase=game.phase,
                 day_no=game.day_no,
                 phase_order=list(game.phase_order),
-                locked_chat_phases=list(game.locked_chat_phases),
+                chat_phases=list(game.chat_phases),
             )
             for id, game in game_result
         ],
@@ -57,7 +57,7 @@ def game_create(body: models.GameCreateRequestModel) -> tuple[models.GameCreateR
     if body.phase is None:
         body.phase = body.phase_order[0]
     
-    game = Game(body.day_no, start_phase=body.phase, phase_order=tuple(body.phase_order), locked_chat_phases=frozenset(body.locked_chat_phases))
+    game = Game(body.day_no, start_phase=body.phase, phase_order=tuple(body.phase_order), chat_phases=frozenset(body.chat_phases))
 
     for player_name, role in zip(body.players, roles):
         game.add_player(core.Player(player_name, role.role.value()(**role.role_params), alignments[role.alignment_value(), role.alignment_id]))
@@ -106,7 +106,7 @@ def game_get(id: int) -> models.GameResponseModel | models.ErrorResponse:
             if mod_token == game.mod_token or chat.has_read_perms(game, player)
         ],
         phase_order = list(game.phase_order),
-        locked_chat_phases = list(game.locked_chat_phases),
+        chat_phases = list(game.chat_phases),
     )
 
 @api_bp.put("/games/<int:id>")
@@ -129,8 +129,8 @@ def game_put(id: int, body: models.GamePutRequestModel) -> models.EmptyResponse 
         game.phase = body.phase
     if body.phase_order is not None:
         game.phase_order = tuple(body.phase_order)
-    if body.locked_chat_phases is not None:
-        game.locked_chat_phases = frozenset(body.locked_chat_phases)
+    if body.chat_phases is not None:
+        game.chat_phases = frozenset(body.chat_phases)
     return "", 204
 
 @api_bp.patch("/games/<int:id>")
@@ -525,3 +525,27 @@ def game_chat_send_message(id: int, chat_id: str, body: models.ChatPostRequestMo
         return {"message": "Not the moderator or player authorized to write to this chat"}, 403
     chat.send(player.name if player is not None else "Moderator", body.content)
     return "", 204
+
+@api.get("/games/<int:id>/votes")
+@validate()  # type: ignore[misc]
+def game_votes(id: int) -> GameVotesResponseModel | ErrorResponse:
+    """
+    Get the votes in a game.
+    """
+    if id not in games:
+        return {"message": "Game not found"}, 404
+    game = games[id]
+    return GameVotesResponseModel(
+        votes = {
+            p.name: v.name
+            if (v := game.votes[p]) is not None
+            else None
+            for p in game.players
+        },
+        vote_counts = {
+            p.name: [v.name for v in game.get_voters(p)]
+            for p in game.players
+            if game.get_votes(p) > 0
+        },
+        no_elim_vote_count = [v.name for v in game.get_voters(None)]
+    )

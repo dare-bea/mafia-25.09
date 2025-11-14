@@ -242,6 +242,32 @@ class Resolver:
         self.lazy_allowed = sum(bool("town" not in p.alignment.tags) for p in game.players) > 1
         return self.lazy_allowed
 
+    def vote_ongoing(self, game: Game) -> bool:
+        if not game.is_voting_phase():
+            return False
+        elim = self.vote_elimination(game)
+        if elim is not None:
+            return False
+        if game.get_votes(None) >= len(game.players) // 2:
+            return False
+        return True
+
+    def vote_elimination(self, game: Game) -> Player | None:
+        if not game.is_voting_phase():
+            return None
+        for p in game.players:
+            if game.get_votes(p) > len(game.players) // 2:
+                return p
+        return None
+
+    def resolve_vote(self, game: Game) -> Player | None:
+        if not game.is_voting_phase() or self.vote_ongoing(game):
+            return None
+        elim = self.vote_elimination(game)
+        if elim is not None:
+            elim.kill("Vote")
+        game.advance_phase()
+        return elim
 
 class Kill(Ability):
     """Kills a player."""
