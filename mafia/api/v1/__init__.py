@@ -3,260 +3,27 @@ from typing import Any, Callable, Literal, cast
 import random
 
 from flask import Blueprint, request
-from pydantic import BaseModel, Field, field_validator
 from flask_pydantic import validate  # type: ignore[import-untyped]
-from pydantic_core import PydanticCustomError
 
 from mafia import core
 from mafia import normal
 from mafia.api.core import Game, resolver, get_permissions, games, game_count
-
-# API V1 MODELS #
-
-ErrorResponse = tuple[dict[str, str], int]
-EmptyResponse = tuple[Literal[''], int]
-
-class GameSummaryModel(BaseModel):
-    id: int
-    players: list[str]
-    phase: core.Phase
-    day_no: int
-    phase_order: list[Any]
-    locked_chat_phases: list[Any]
-
-class GameListQueryModel(BaseModel):
-    start: int = 0
-    limit: int = 25
-
-class GameListResponseModel(BaseModel):
-    games: list[GameSummaryModel]
-    total_games: int
-
-class RoleModel(BaseModel):
-    node: Literal["role"] = "role"
-    id: str
-
-    @field_validator('id')
-    def validate_id(cls, v: Any) -> Any:
-        if v not in normal.ROLES:
-            raise PydanticCustomError(
-                "unknown_role",
-                "Id must be one of {expected}, recieved {input}.",
-                {'input': v, 'expected': list(normal.ROLES.keys())}
-            )
-        return v
-
-    def value(self) -> type[core.Role] | Callable[..., core.Role]:
-        return normal.ROLES[self.id]
-
-class CombinedRoleModel(BaseModel):
-    node: Literal["combined_role"] = "combined_role"
-    id: str
-    roles: list["RoleModel | ModifierModel"]
-    params: dict[str, Any] = Field(default_factory=dict)
-
-    @field_validator('id')
-    def validate_id(cls, v: Any) -> Any:
-        if v not in normal.COMBINED_ROLES:
-            raise PydanticCustomError(
-                "unknown_combined_role",
-                "Id must be one of {expected}, recieved {input}.",
-                {'input': v, 'expected': list(normal.COMBINED_ROLES.keys())}
-            )
-        return v
-
-    def value(self) -> Callable[..., core.Role]:
-        return normal.COMBINED_ROLES[self.id](*(r.value() for r in self.roles), **self.params)
-
-class ModifierModel(BaseModel):
-    node: Literal["modifier"] = "modifier"
-    id: str
-    role: "RoleModel | CombinedRoleModel | ModifierModel"
-    params: dict[str, Any] = Field(default_factory=dict)
-
-    @field_validator('id')
-    def validate_id(cls, v: Any) -> Any:
-        if v not in normal.MODIFIERS:
-            raise PydanticCustomError(
-                "unknown_modifier",
-                "Id must be one of {expected}, recieved {input}.",
-                {'input': v, 'expected': list(normal.MODIFIERS.keys())}
-            )
-        return v
-
-    def value(self) -> type[core.Role]:
-        r = self.role.value()
-        if isinstance(r, type) and issubclass(r, core.Role):
-            return normal.MODIFIERS[self.id](**self.params)(r)
-        else:
-            return normal.MODIFIERS[self.id](**self.params)(cast(type[core.Role], type(r())))
-
-class GameCreateRequestRole(BaseModel):
-    role: RoleModel | CombinedRoleModel | ModifierModel
-    alignment: str
-    role_params: dict[str, Any] = Field(default_factory=dict)
-    alignment_id: str | None = None
-    alignment_demonym: str | Literal[''] | None = None
-    alignment_role_names: dict[str, str] | None = None
-
-    @field_validator('alignment')
-    def validate_alignment(cls, v: Any) -> Any:
-        if v not in normal.ALIGNMENTS:
-            raise PydanticCustomError(
-                "unknown_alignment",
-                "Alignment must be one of {expected}, recieved {input}.",
-                {'input': v, 'expected': list(normal.ALIGNMENTS.keys())}
-            )
-        return v
-
-    def alignment_value(self) -> type[core.Alignment] | Callable[..., core.Alignment]:
-        return normal.ALIGNMENTS[self.alignment]
-
-class GameCreateRequestModel(BaseModel):
-    players: list[str]
-    day_no: int = 1
-    phase_order: list[Any] = Field(default_factory=lambda: [core.Phase.DAY, core.Phase.NIGHT])
-    locked_chat_phases: list[Any] = Field(default_factory=lambda: [core.Phase.NIGHT])
-    phase: Any | None = None
-    shuffle_roles: bool = True
-    roles: list[GameCreateRequestRole]
-
-class GameCreateResponseModel(BaseModel):
-    id: int
-    mod_token: str
-
-class ShortPartialPlayerModel(BaseModel):
-    name: str
-    is_alive: bool
-
-class ShortPlayerModel(BaseModel):
-    name: str
-    is_alive: bool
-    role_name: str
-    role: str
-    alignment: str
-
-class ShortChatModel(BaseModel):
-    id: str
-    total_messages: int
-
-class GameResponseModel(BaseModel):
-    id: int
-    day_no: int
-    phase: core.Phase
-    players: list[ShortPlayerModel | ShortPartialPlayerModel]
-    chats: list[ShortChatModel]
-    phase_order: list[Any]
-    locked_chat_phases: list[Any]
-
-class GamePutRequestModel(BaseModel):
-    day_no: int | None = None
-    phase: core.Phase | None = None
-    phase_order: list[Any] | None = None
-    locked_chat_phases: list[Any] | None = None
-
-class GamePatchRequestModel(BaseModel):
-    actions: list[Literal[
-        "dequeue",
-        "resolve",
-        "next_phase",
-    ]]
-
-class PlayerRAModel(BaseModel):
-    id: str
-    actions: list[str]
-    passives: list[str]
-    shared_actions: list[str]
-
-class PlayerResponseModel(BaseModel):
-    name: str
-    is_alive: bool
-    role_name: str
-    role: PlayerRAModel
-    alignment: PlayerRAModel
-    known_players: list[ShortPlayerModel]
-    total_private_messages: int
-    chats: list[ShortChatModel]
-
-class PlayerAbilitiesActionModel(BaseModel):
-    id: str
-    phase: core.Phase | None = None
-    immediate: bool
-    target_count: int
-    targets: list[list[str]]
-    queued: list[str] | None = None
-
-class PlayerAbilitiesPassiveModel(BaseModel):
-    id: str
-    phase: core.Phase | None = None
-    immediate: bool
-    queued: bool
-
-class PlayerAbilitiesSharedActionModel(BaseModel):
-    id: str
-    used_by: str | None = None
-    phase: core.Phase | None = None
-    immediate: bool
-    target_count: int
-    targets: list[list[str]]
-    queued: list[str] | None = None
-
-class PlayerAbiltiesResponseModel(BaseModel):
-    actions: list[PlayerAbilitiesActionModel]
-    passives: list[PlayerAbilitiesPassiveModel]
-    shared_actions: list[PlayerAbilitiesSharedActionModel]
-
-class PlayerQueueAbilityModel(BaseModel):
-    targets: list[str] = Field(default_factory=list)
-    player_inputs: list[Any] = Field(default_factory=list)
-
-class PlayerQueueAbilityRequestModel(BaseModel):
-    actions: dict[str, PlayerQueueAbilityModel | None] = Field(default_factory=dict)
-    shared_actions: dict[str, PlayerQueueAbilityModel | None] = Field(default_factory=dict)
-
-class ChatQueryModel(BaseModel):
-    start: int = 0
-    limit: int = 25
-
-class ChatMessageModel(BaseModel):
-    author: str
-    timestamp: datetime
-    content: str
-
-class PlayerPMResponseModel(BaseModel):
-    total_messages: int
-    messages: list[ChatMessageModel]
-
-class ChatPostRequestModel(BaseModel):
-    content: str
-
-class ChatGetResponseModel(BaseModel):
-    chat_id: str
-    read_perms: list[str]
-    write_perms: list[str]
-    total_messages: int
-
-class ChatMessagesResponseModel(BaseModel):
-    chat_id: str
-    total_messages: int
-    messages: list[ChatMessageModel]
-
-# API V1 ENDPOINTS #
+from . import models
 
 api_bp = Blueprint("api_v1", __name__, url_prefix="/api/v1")
 
 @api_bp.get("/games")
 @validate()  # type: ignore[misc]
-def game_list(query: GameListQueryModel) -> GameListResponseModel:
+def game_list(query: models.GameListQueryModel) -> models.GameListResponseModel:
     """
     Get the list of games.
     """
     start = 0 if query.start < 0 else query.start
     limit = 25 if query.limit < 0 else query.limit
     game_result = sorted(games.items(), key=lambda x: x[0])[start : start + limit]
-    return GameListResponseModel(
+    return models.GameListResponseModel(
         games=[
-            GameSummaryModel(
+            models.GameSummaryModel(
                 id=id,
                 players=[player.name for player in game.players],
                 phase=game.phase,
@@ -271,7 +38,7 @@ def game_list(query: GameListQueryModel) -> GameListResponseModel:
 
 @api_bp.post("/games")
 @validate()  # type: ignore[misc]
-def game_create(body: GameCreateRequestModel) -> tuple[GameCreateResponseModel, int]:
+def game_create(body: models.GameCreateRequestModel) -> tuple[models.GameCreateResponseModel, int]:
     """
     Create a new game.
     """
@@ -299,11 +66,11 @@ def game_create(body: GameCreateRequestModel) -> tuple[GameCreateResponseModel, 
 
     games[id] = game
 
-    return GameCreateResponseModel(id=id, mod_token=game.mod_token), 201
+    return models.GameCreateResponseModel(id=id, mod_token=game.mod_token), 201
 
 @api_bp.get("/games/<int:id>")
 @validate()  # type: ignore[misc]
-def game_get(id: int) -> GameResponseModel | ErrorResponse:
+def game_get(id: int) -> models.GameResponseModel | models.ErrorResponse:
     """
     Get a game.
     """
@@ -311,12 +78,12 @@ def game_get(id: int) -> GameResponseModel | ErrorResponse:
         return {"message": "Game not found"}, 404
     game = games[id]
     mod_token, player = get_permissions(game, request.headers)
-    return GameResponseModel(
+    return models.GameResponseModel(
         id = id,
         day_no = game.day_no,
         phase = game.phase,
         players = [
-            ShortPlayerModel(
+            models.ShortPlayerModel(
                 name = p.name,
                 is_alive = p.is_alive,
                 role_name = p.role_name,
@@ -324,14 +91,14 @@ def game_get(id: int) -> GameResponseModel | ErrorResponse:
                 alignment = p.alignment.id,
             )
             if mod_token == game.mod_token or player is p or not p.is_alive or (player is not None and p in player.known_players) else 
-            ShortPartialPlayerModel(
+            models.ShortPartialPlayerModel(
                 name = p.name,
                 is_alive = p.is_alive,
             )
             for p in game.players
         ],
         chats = [
-            ShortChatModel(
+            models.ShortChatModel(
                 id = chat_id,
                 total_messages = len(chat),
             )
@@ -344,7 +111,7 @@ def game_get(id: int) -> GameResponseModel | ErrorResponse:
 
 @api_bp.put("/games/<int:id>")
 @validate()  # type: ignore[misc]
-def game_put(id: int, body: GamePutRequestModel) -> EmptyResponse | ErrorResponse:
+def game_put(id: int, body: models.GamePutRequestModel) -> models.EmptyResponse | models.ErrorResponse:
     """
     Update a game.
     """
@@ -368,7 +135,7 @@ def game_put(id: int, body: GamePutRequestModel) -> EmptyResponse | ErrorRespons
 
 @api_bp.patch("/games/<int:id>")
 @validate()  # type: ignore[misc]
-def game_patch(id: int, body: GamePatchRequestModel) -> EmptyResponse | ErrorResponse:
+def game_patch(id: int, body: models.GamePatchRequestModel) -> models.EmptyResponse | models.ErrorResponse:
     """
     Update a game.
     """
@@ -398,7 +165,7 @@ def game_patch(id: int, body: GamePatchRequestModel) -> EmptyResponse | ErrorRes
 
 @api_bp.get("/games/<int:id>/players")
 @validate()  # type: ignore[misc]
-def game_players(id: int) -> list[ShortPlayerModel | ShortPartialPlayerModel] | ErrorResponse:
+def game_players(id: int) -> list[models.ShortPlayerModel | models.ShortPartialPlayerModel] | models.ErrorResponse:
     """
     Get the players in a game.
     """
@@ -407,7 +174,7 @@ def game_players(id: int) -> list[ShortPlayerModel | ShortPartialPlayerModel] | 
     game = games[id]
     mod_token, player = get_permissions(game, request.headers)
     return [
-        ShortPlayerModel(
+        models.ShortPlayerModel(
             name = p.name,
             is_alive = p.is_alive,
             role_name = p.role_name,
@@ -415,7 +182,7 @@ def game_players(id: int) -> list[ShortPlayerModel | ShortPartialPlayerModel] | 
             alignment = p.alignment.id,
         )
         if mod_token == game.mod_token or player is p or not p.is_alive or (player is not None and p in player.known_players) else 
-        ShortPartialPlayerModel(
+        models.ShortPartialPlayerModel(
             name = p.name,
             is_alive = p.is_alive,
         )
@@ -424,7 +191,7 @@ def game_players(id: int) -> list[ShortPlayerModel | ShortPartialPlayerModel] | 
 
 @api_bp.get("/games/<int:id>/chats")
 @validate()  # type: ignore[misc]
-def game_chats(id: int) -> list[ShortChatModel] | ErrorResponse:
+def game_chats(id: int) -> list[models.ShortChatModel] | models.ErrorResponse:
     """
     Get the chats in a game.
     """
@@ -433,7 +200,7 @@ def game_chats(id: int) -> list[ShortChatModel] | ErrorResponse:
     game = games[id]
     mod_token, player = get_permissions(game, request.headers)
     return [
-        ShortChatModel(
+        models.ShortChatModel(
             id = chat_id,
             total_messages = len(chat),
         )
@@ -443,7 +210,7 @@ def game_chats(id: int) -> list[ShortChatModel] | ErrorResponse:
 
 @api_bp.get("/games/<int:id>/players/<string:name>")
 @validate()  # type: ignore[misc]
-def game_player(id: int, name: str) -> PlayerResponseModel | ErrorResponse:
+def game_player(id: int, name: str) -> models.PlayerResponseModel | models.ErrorResponse:
     """
     Get a player in a game.
     """
@@ -458,24 +225,24 @@ def game_player(id: int, name: str) -> PlayerResponseModel | ErrorResponse:
         return {"message": "Not authenticated"}, 401
     if mod_token != game.mod_token and player_auth is not player:
         return {"message": "Not the moderator or the player"}, 403
-    return PlayerResponseModel(
+    return models.PlayerResponseModel(
         name = player.name,
         is_alive = player.is_alive,
         role_name = player.role_name,
-        role = PlayerRAModel(
+        role = models.PlayerRAModel(
             id = player.role.id,
             actions = [a.id for a in player.actions],
             passives = [a.id for a in player.passives],
             shared_actions = [a.id for a in player.shared_actions],
         ),
-        alignment = PlayerRAModel(
+        alignment = models.PlayerRAModel(
             id = player.alignment.id,
             actions = [a.id for a in player.alignment.actions],
             passives = [a.id for a in player.alignment.passives],
             shared_actions = [a.id for a in player.alignment.shared_actions],
         ),
         known_players = [
-            ShortPlayerModel(
+            models.ShortPlayerModel(
                 name = p.name,
                 is_alive = p.is_alive,
                 role_name = p.role_name,
@@ -486,7 +253,7 @@ def game_player(id: int, name: str) -> PlayerResponseModel | ErrorResponse:
         ],
         total_private_messages = len(player.private_messages),
         chats = [
-            ShortChatModel(
+            models.ShortChatModel(
                 id = chat_id,
                 total_messages = len(chat),
             )
@@ -497,7 +264,7 @@ def game_player(id: int, name: str) -> PlayerResponseModel | ErrorResponse:
 
 @api_bp.get("/games/<int:id>/players/<string:name>/abilities")
 @validate()  # type: ignore[misc]
-def game_player_abilities(id: int, name: str) -> PlayerAbiltiesResponseModel | ErrorResponse:
+def game_player_abilities(id: int, name: str) -> models.PlayerAbiltiesResponseModel | models.ErrorResponse:
     """
     Get the abilities of a player in a game.
     """
@@ -512,9 +279,9 @@ def game_player_abilities(id: int, name: str) -> PlayerAbiltiesResponseModel | E
         return {"message": "Not authenticated"}, 401
     if mod_token != game.mod_token and player_auth is not player:
         return {"message": "Not the moderator or the player"}, 403
-    return PlayerAbiltiesResponseModel(
+    return models.PlayerAbiltiesResponseModel(
         actions = [
-            PlayerAbilitiesActionModel(
+            models.PlayerAbilitiesActionModel(
                 id = a.id,
                 phase = a.phase,
                 immediate = a.immediate,
@@ -530,7 +297,7 @@ def game_player_abilities(id: int, name: str) -> PlayerAbiltiesResponseModel | E
             for a in player.actions
         ],
         passives = [
-            PlayerAbilitiesPassiveModel(
+            models.PlayerAbilitiesPassiveModel(
                 id = a.id,
                 phase = a.phase,
                 immediate = a.immediate,
@@ -539,7 +306,7 @@ def game_player_abilities(id: int, name: str) -> PlayerAbiltiesResponseModel | E
             for a in player.passives
         ],
         shared_actions = [
-            PlayerAbilitiesSharedActionModel(
+            models.PlayerAbilitiesSharedActionModel(
                 id = a.id,
                 used_by = v.actor.name
                 if (v := next((v for v in game.queued_visits if v.ability == a and v.actor.alignment == player.alignment), None)) is not None
@@ -561,7 +328,7 @@ def game_player_abilities(id: int, name: str) -> PlayerAbiltiesResponseModel | E
 
 @api_bp.post("/games/<int:id>/players/<string:name>/abilities")
 @validate()  # type: ignore[misc]
-def game_player_queue_ability(id: int, name: str, body: PlayerQueueAbilityRequestModel) -> EmptyResponse | ErrorResponse:
+def game_player_queue_ability(id: int, name: str, body: models.PlayerQueueAbilityRequestModel) -> models.EmptyResponse | models.ErrorResponse:
     """
     Queue an ability for a player in a game.
     """
@@ -633,7 +400,7 @@ def game_player_queue_ability(id: int, name: str, body: PlayerQueueAbilityReques
 
 @api_bp.get("/games/<int:id>/players/<string:name>/messages")
 @validate()  # type: ignore[misc]
-def game_player_messages(id: int, name: str, query: ChatQueryModel) -> PlayerPMResponseModel | ErrorResponse:
+def game_player_messages(id: int, name: str, query: models.ChatQueryModel) -> models.PlayerPMResponseModel | models.ErrorResponse:
     """
     Get a player's private messages.
     """
@@ -650,10 +417,10 @@ def game_player_messages(id: int, name: str, query: ChatQueryModel) -> PlayerPMR
         return {"message": "Not the moderator or authorized player"}, 403
     start = 0 if query.start < 0 else query.start
     limit = 25 if query.limit < 0 else query.limit
-    return PlayerPMResponseModel(
+    return models.PlayerPMResponseModel(
         total_messages = len(player.private_messages),
         messages = [
-            ChatMessageModel(
+            models.ChatMessageModel(
                 author = str(msg.sender),
                 timestamp = datetime.now(),
                 content = msg.content,
@@ -664,7 +431,7 @@ def game_player_messages(id: int, name: str, query: ChatQueryModel) -> PlayerPMR
 
 @api_bp.post("/games/<int:id>/players/<string:name>/messages")
 @validate()  # type: ignore[misc]
-def game_player_send_message(id: int, name: str, body: ChatPostRequestModel) -> EmptyResponse | ErrorResponse:
+def game_player_send_message(id: int, name: str, body: models.ChatPostRequestModel) -> models.EmptyResponse | models.ErrorResponse:
     """
     Send a private message to a player.
     """
@@ -684,7 +451,7 @@ def game_player_send_message(id: int, name: str, body: ChatPostRequestModel) -> 
 
 @api_bp.get("/games/<int:id>/chats/<string:chat_id>")
 @validate()  # type: ignore[misc]
-def game_chat(id: int, chat_id: str) -> ChatGetResponseModel | ErrorResponse:
+def game_chat(id: int, chat_id: str) -> models.ChatGetResponseModel | models.ErrorResponse:
     """
     Get a chat in a game.
     """
@@ -698,7 +465,7 @@ def game_chat(id: int, chat_id: str) -> ChatGetResponseModel | ErrorResponse:
         return {"message": "Not authenticated"}, 401
     if chat is None or (mod_token != game.mod_token and not read_perms):
         return {"message": "Chat not found"}, 404
-    return ChatGetResponseModel(
+    return models.ChatGetResponseModel(
         chat_id = chat_id,
         read_perms = [p.name for p in chat.read_perms(game)],
         write_perms = [p.name for p in chat.write_perms(game)],
@@ -707,7 +474,7 @@ def game_chat(id: int, chat_id: str) -> ChatGetResponseModel | ErrorResponse:
 
 @api_bp.get("/games/<int:id>/chats/<string:chat_id>/messages")
 @validate()  # type: ignore[misc]
-def game_chat_messages(id: int, chat_id: str, query: ChatQueryModel) -> ChatMessagesResponseModel | ErrorResponse:
+def game_chat_messages(id: int, chat_id: str, query: models.ChatQueryModel) -> models.ChatMessagesResponseModel | models.ErrorResponse:
     """
     Get the messages in a chat.
     """
@@ -723,11 +490,11 @@ def game_chat_messages(id: int, chat_id: str, query: ChatQueryModel) -> ChatMess
         return {"message": "Chat not found"}, 404
     start = 0 if query.start < 0 else query.start
     limit = 25 if query.limit < 0 else query.limit
-    return ChatMessagesResponseModel(
+    return models.ChatMessagesResponseModel(
         chat_id = chat_id,
         total_messages = len(chat),
         messages = [
-            ChatMessageModel(
+            models.ChatMessageModel(
                 author = str(msg.sender),
                 timestamp = datetime.now(),
                 content = msg.content,
@@ -739,7 +506,7 @@ def game_chat_messages(id: int, chat_id: str, query: ChatQueryModel) -> ChatMess
 @api_bp.post("/games/<int:id>/chats/<string:chat_id>")
 @api_bp.post("/games/<int:id>/chats/<string:chat_id>/messages")
 @validate()  # type: ignore[misc]
-def game_chat_send_message(id: int, chat_id: str, body: ChatPostRequestModel) -> EmptyResponse | ErrorResponse:
+def game_chat_send_message(id: int, chat_id: str, body: models.ChatPostRequestModel) -> models.EmptyResponse | models.ErrorResponse:
     """
     Send a message to a chat.
     """
