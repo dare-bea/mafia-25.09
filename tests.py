@@ -808,6 +808,34 @@ def test_api_v1() -> None:
         assert response.json is not None, "Expected JSON response"
         assert response.json["message"] == "Check failed for 'Doctor': Alice", "Expected 'Check failed for 'Doctor': Alice'"
 
+def test_voting() -> None:
+    r = PrintResolver()
+    town = examples.Town()
+    mafia = examples.Mafia()
+    game = m.Game(start_phase=m.Phase.DAY)
+
+    alice = m.Player("Alice", examples.Vanilla(), town)
+    bob = m.Player("Bob", examples.Vanilla(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
+
+    game.add_player(alice, bob, eve)
+
+    r.print_players(game)
+    r.add_passives(game)
+
+    assert r.vote_ongoing(game), "Vote is not ongoing"
+    game.vote(alice, eve)
+    assert r.vote_ongoing(game), "Vote is not ongoing before hammer"
+    
+    game.vote(bob, eve)
+    assert not r.vote_ongoing(game), "Vote is still ongoing after hammer"
+    pprint(elim := r.resolve_vote(game))
+    assert elim is eve, "Vote did not resolve to Eve"
+    assert not eve.is_alive, "Eve is alive, expected to be killed"
+    assert eve.death_causes == ["Vote"], "Eve's death cause is not Vote"
+    assert game.time == (1, m.Phase.NIGHT), "Game did not advance to night"
+    assert not r.vote_ongoing(game), "Vote is ongoing during night"
+
 # DO TESTS #
 
 TESTS: dict[str, Callable[[], None]] = {
@@ -828,9 +856,9 @@ TESTS: dict[str, Callable[[], None]] = {
     "test_ninja": test_ninja,
     "test_personal": test_personal,
     "test_combine": test_combine,
-    "test_api_v1": test_api_v1
+    "test_api_v1": test_api_v1,
+    "test_voting": test_voting
 }
-
 
 def main() -> int:
     from os import makedirs
