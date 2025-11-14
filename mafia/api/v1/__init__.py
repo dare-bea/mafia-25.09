@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Callable, Literal, cast
+from typing import Callable
 import random
 
 from flask import Blueprint, request
@@ -526,16 +526,16 @@ def game_chat_send_message(id: int, chat_id: str, body: models.ChatPostRequestMo
     chat.send(player.name if player is not None else "Moderator", body.content)
     return "", 204
 
-@api.get("/games/<int:id>/votes")
+@api_bp.get("/games/<int:id>/votes")
 @validate()  # type: ignore[misc]
-def game_votes(id: int) -> GameVotesResponseModel | ErrorResponse:
+def game_votes(id: int) -> models.GameVotesResponseModel | models.ErrorResponse:
     """
     Get the votes in a game.
     """
     if id not in games:
         return {"message": "Game not found"}, 404
     game = games[id]
-    return GameVotesResponseModel(
+    return models.GameVotesResponseModel(
         votes = {
             p.name: v.name
             if (v := game.votes[p]) is not None

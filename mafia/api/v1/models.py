@@ -16,7 +16,7 @@ class GameSummaryModel(BaseModel):
     phase: core.Phase
     day_no: int
     phase_order: list[Any]
-    locked_chat_phases: list[Any]
+    chat_phases: list[Any]
 
 class GameListQueryModel(BaseModel):
     start: int = 0
@@ -110,7 +110,7 @@ class GameCreateRequestModel(BaseModel):
     players: list[str]
     day_no: int = 1
     phase_order: list[Any] = Field(default_factory=lambda: [core.Phase.DAY, core.Phase.NIGHT])
-    locked_chat_phases: list[Any] = Field(default_factory=lambda: [core.Phase.NIGHT])
+    chat_phases: list[Any] = Field(default_factory=lambda: [core.Phase.NIGHT])
     phase: Any | None = None
     shuffle_roles: bool = True
     roles: list[GameCreateRequestRole]
@@ -141,13 +141,13 @@ class GameResponseModel(BaseModel):
     players: list[ShortPlayerModel | ShortPartialPlayerModel]
     chats: list[ShortChatModel]
     phase_order: list[Any]
-    locked_chat_phases: list[Any]
+    chat_phases: list[Any]
 
 class GamePutRequestModel(BaseModel):
     day_no: int | None = None
     phase: core.Phase | None = None
     phase_order: list[Any] | None = None
-    locked_chat_phases: list[Any] | None = None
+    chat_phases: list[Any] | None = None
 
 class GamePatchRequestModel(BaseModel):
     actions: list[Literal[

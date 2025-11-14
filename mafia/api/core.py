@@ -22,9 +22,10 @@ class Game(BaseGame):
         self.chats["global"] = Chat()
         self.queued_visits: list[Visit] = []
 
-    def next_phase(self) -> None:
-        super().next_phase()
+    def advance_phase(self) -> tuple[int, Any]:
+        result = super().advance_phase()
         self.queued_visits.clear()
+        return result
 
 resolver = Resolver()
 
