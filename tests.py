@@ -1,14 +1,14 @@
 from sys import stdout
 from typing import Callable
+import mafia as m
+from mafia import AbilityType as AT
+from mafia import VisitStatus as VS
+import examples
 from pprint import pprint
-from mafia import core
-from mafia.core import AbilityType as AT
-from mafia.core import VisitStatus as VS
-from mafia import normal
 
 
-class PrintResolver(normal.Resolver):
-    def resolve_visit(self, game: core.Game, visit: core.Visit) -> int:
+class PrintResolver(examples.Resolver):
+    def resolve_visit(self, game: m.Game, visit: m.Visit) -> int:
         resolved_visits = set(v for v in game.visits if v.status is VS.PENDING) - {visit}
 
         result = super().resolve_visit(game, visit)
@@ -19,7 +19,7 @@ class PrintResolver(normal.Resolver):
             print(f"    {v}")
         return result
 
-    def resolve_cycles(self, game: core.Game) -> bool:
+    def resolve_cycles(self, game: m.Game) -> bool:
         resolved_visits = set(v for v in game.visits if v.status is VS.PENDING)
         successfully_resolved = super().resolve_cycles(game)
         resolved_visits -= set(v for v in game.visits if v.status is VS.PENDING)
@@ -28,7 +28,7 @@ class PrintResolver(normal.Resolver):
             print(f"    {v}")
         return successfully_resolved
 
-    def print_players(self, game: core.Game) -> None:
+    def print_players(self, game: m.Game) -> None:
         for player in game.players:
             print(f"{player}: {player.role_name}")
             print(f"  Actions: {player.actions}")
@@ -40,16 +40,16 @@ class PrintResolver(normal.Resolver):
 def test_catastrophic_rule() -> None:
     r = PrintResolver()
 
-    cop = normal.Cop()
-    jailkeeper = normal.Jailkeeper()
-    roleblocker = normal.Roleblocker()
-    town = normal.Town()
-    mafia = normal.Mafia()
+    cop = examples.Cop()
+    jailkeeper = examples.Jailkeeper()
+    roleblocker = examples.Roleblocker()
+    town = examples.Town()
+    mafia = examples.Mafia()
 
-    game = core.Game(start_phase=core.Phase.NIGHT)
-    alice = core.Player("Alice", cop, town)
-    bob = core.Player("Bob", jailkeeper, town)
-    eve = core.Player("Eve", roleblocker, mafia)
+    game = m.Game(start_phase=m.Phase.NIGHT)
+    alice = m.Player("Alice", cop, town)
+    bob = m.Player("Bob", jailkeeper, town)
+    eve = m.Player("Eve", roleblocker, mafia)
 
     game.add_player(alice, bob, eve)
 
@@ -81,17 +81,17 @@ def test_catastrophic_rule() -> None:
 def test_xshot_role() -> None:
     r = PrintResolver()
 
-    vanilla = normal.Vanilla()
-    xshot = normal.XShot(1)
-    xshot_cop = xshot(normal.Cop)()
-    xshot_bulletproof = xshot(normal.Bulletproof)()
-    town = normal.Town()
-    mafia = normal.Mafia()
+    vanilla = examples.Vanilla()
+    xshot = examples.XShot(1)
+    xshot_cop = xshot(examples.Cop)()
+    xshot_bulletproof = xshot(examples.Bulletproof)()
+    town = examples.Town()
+    mafia = examples.Mafia()
 
-    game = core.Game()
-    alice = core.Player("Alice", xshot_cop, town)
-    bob = core.Player("Bob", xshot_bulletproof, town)
-    eve = core.Player("Eve", vanilla, mafia)
+    game = m.Game()
+    alice = m.Player("Alice", xshot_cop, town)
+    bob = m.Player("Bob", xshot_bulletproof, town)
+    eve = m.Player("Eve", vanilla, mafia)
 
     game.add_player(alice, bob, eve)
 
@@ -102,7 +102,7 @@ def test_xshot_role() -> None:
         print(f"  Shared Actions: {player.shared_actions}")
         print()
 
-    game.phase, game.day_no = core.Phase.NIGHT, 1
+    game.phase, game.day_no = m.Phase.NIGHT, 1
     r.add_passives(game)
 
     if alice.actions[0].check(game, alice, (bob,)):
@@ -116,7 +116,7 @@ def test_xshot_role() -> None:
     assert bob.is_alive, "Bob is dead, expected Bulletproof to protect."
     print()
 
-    game.phase, game.day_no = core.Phase.NIGHT, 2
+    game.phase, game.day_no = m.Phase.NIGHT, 2
     if alice.actions[0].check(game, alice, (eve,)):
         print(f"{alice.name} is using {alice.actions[0].id} on {eve.name}.")
         game.visits.append(r.make_visit(game, alice, (eve,), AT.ACTION, 0))
@@ -134,13 +134,13 @@ def test_xshot_role() -> None:
 def test_protection() -> None:
     r = PrintResolver()
 
-    town = normal.Town()
-    mafia = normal.Mafia()
+    town = examples.Town()
+    mafia = examples.Mafia()
 
-    game = core.Game(start_phase=core.Phase.NIGHT)
-    alice = core.Player("Alice", normal.Doctor(), town)
-    bob = core.Player("Bob", normal.Vanilla(), town)
-    eve = core.Player("Eve", normal.Vanilla(), mafia)
+    game = m.Game(start_phase=m.Phase.NIGHT)
+    alice = m.Player("Alice", examples.Doctor(), town)
+    bob = m.Player("Bob", examples.Vanilla(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
 
     game.add_player(alice, bob, eve)
 
@@ -165,14 +165,14 @@ def test_protection() -> None:
 def test_xshot_macho() -> None:
     r = PrintResolver()
 
-    town = normal.Town()
-    mafia = normal.Mafia()
+    town = examples.Town()
+    mafia = examples.Mafia()
 
-    game = core.Game(start_phase=core.Phase.NIGHT)
-    alice = core.Player("Alice", normal.Doctor(), town)
-    bob = core.Player("Bob", normal.XShot(1)(normal.Macho)(), town)
-    carol = core.Player("Carol", normal.XShot(1)(normal.Macho)(), town)
-    eve = core.Player("Eve", normal.Vanilla(), mafia)
+    game = m.Game(start_phase=m.Phase.NIGHT)
+    alice = m.Player("Alice", examples.Doctor(), town)
+    bob = m.Player("Bob", examples.XShot(1)(examples.Macho)(), town)
+    carol = m.Player("Carol", examples.XShot(1)(examples.Macho)(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
 
     game.add_player(alice, bob, carol, eve)
 
@@ -201,13 +201,13 @@ def test_xshot_macho() -> None:
 def test_tracker_roleblocker() -> None:
     r = PrintResolver()
 
-    town = normal.Town()
-    mafia = normal.Mafia()
+    town = examples.Town()
+    mafia = examples.Mafia()
 
-    game = core.Game(start_phase=core.Phase.NIGHT)
-    alice = core.Player("Alice", normal.Roleblocker(), town)
-    bob = core.Player("Bob", normal.Tracker(), town)
-    eve = core.Player("Eve", normal.Vanilla(), mafia)
+    game = m.Game(start_phase=m.Phase.NIGHT)
+    alice = m.Player("Alice", examples.Roleblocker(), town)
+    bob = m.Player("Bob", examples.Tracker(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
 
     game.add_player(alice, bob, eve)
 
@@ -234,13 +234,13 @@ def test_tracker_roleblocker() -> None:
 def test_juggernaut() -> None:
     r = PrintResolver()
 
-    town = normal.Town()
-    mafia = normal.Mafia()
+    town = examples.Town()
+    mafia = examples.Mafia()
 
-    game = core.Game(start_phase=core.Phase.NIGHT)
-    alice = core.Player("Alice", normal.Roleblocker(), town)
-    bob = core.Player("Bob", normal.Vanilla(), town)
-    eve = core.Player("Eve", normal.Juggernaut(), mafia)
+    game = m.Game(start_phase=m.Phase.NIGHT)
+    alice = m.Player("Alice", examples.Roleblocker(), town)
+    bob = m.Player("Bob", examples.Vanilla(), town)
+    eve = m.Player("Eve", examples.Juggernaut(), mafia)
 
     game.add_player(alice, bob, eve)
 
@@ -265,13 +265,13 @@ def test_juggernaut() -> None:
 
 def test_investigative_fail() -> None:
     r = PrintResolver()
-    town = normal.Town()
-    mafia = normal.Mafia()
-    game = core.Game(start_phase=core.Phase.NIGHT)
+    town = examples.Town()
+    mafia = examples.Mafia()
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
-    alice = core.Player("Alice", normal.Roleblocker(), town)
-    bob = core.Player("Bob", normal.Cop(), town)
-    eve = core.Player("Eve", normal.Vanilla(), mafia)
+    alice = m.Player("Alice", examples.Roleblocker(), town)
+    bob = m.Player("Bob", examples.Cop(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
 
     game.add_player(alice, bob, eve)
 
@@ -291,13 +291,13 @@ def test_investigative_fail() -> None:
 
 def test_ascetic() -> None:
     r = PrintResolver()
-    town = normal.Town()
-    mafia = normal.Mafia()
-    game = core.Game(start_phase=core.Phase.NIGHT)
+    town = examples.Town()
+    mafia = examples.Mafia()
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
-    alice = core.Player("Alice", normal.Ascetic(), town)
-    bob = core.Player("Bob", normal.Doctor(), town)
-    eve = core.Player("Eve", normal.Vanilla(), mafia)
+    alice = m.Player("Alice", examples.Ascetic(), town)
+    bob = m.Player("Bob", examples.Doctor(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
 
     game.add_player(alice, bob, eve)
 
@@ -314,13 +314,13 @@ def test_ascetic() -> None:
 
 def test_detective() -> None:
     r = PrintResolver()
-    town = normal.Town()
-    mafia = normal.Mafia()
-    game = core.Game(start_phase=core.Phase.NIGHT)
+    town = examples.Town()
+    mafia = examples.Mafia()
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
-    alice = core.Player("Alice", normal.Detective(), town)
-    bob = core.Player("Bob", normal.Vanilla(), town)
-    eve = core.Player("Eve", normal.Vanilla(), mafia)
+    alice = m.Player("Alice", examples.Detective(), town)
+    bob = m.Player("Bob", examples.Vanilla(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
 
     game.add_player(alice, bob, eve)
 
@@ -330,7 +330,7 @@ def test_detective() -> None:
     r.resolve_game(game)
     print()
 
-    game.phase, game.day_no = core.Phase.NIGHT, 2
+    game.phase, game.day_no = m.Phase.NIGHT, 2
     game.visits.append(r.make_visit(game, alice, (eve,), AT.ACTION, 0))
     r.resolve_game(game)
     print()
@@ -344,18 +344,18 @@ def test_detective() -> None:
 
 def test_jack_of_all_trades() -> None:
     r = PrintResolver()
-    town = normal.Town()
-    mafia = normal.Mafia()
-    game = core.Game(start_phase=core.Phase.NIGHT)
+    town = examples.Town()
+    mafia = examples.Mafia()
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
-    joat = normal.Jack_of_All_Trades(
-        normal.Cop,
-        normal.Doctor,
+    joat = examples.Jack_of_All_Trades(
+        examples.Cop,
+        examples.Doctor,
     )
 
-    alice = core.Player("Alice", joat(), town)
-    bob = core.Player("Bob", normal.Vanilla(), town)
-    eve = core.Player("Eve", normal.Vanilla(), mafia)
+    alice = m.Player("Alice", joat(), town)
+    bob = m.Player("Bob", examples.Vanilla(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
 
     game.add_player(alice, bob, eve)
 
@@ -374,14 +374,14 @@ def test_jack_of_all_trades() -> None:
 
 def test_hider() -> None:
     r = PrintResolver()
-    town = normal.Town()
-    mafia = normal.Mafia()
-    game = core.Game(start_phase=core.Phase.NIGHT)
+    town = examples.Town()
+    mafia = examples.Mafia()
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
-    alice = core.Player("Alice", normal.Hider(), town)
-    bob = core.Player("Bob", normal.Vanilla(), town)
-    carol = core.Player("Carol", normal.Vigilante(), town)
-    eve = core.Player("Eve", normal.Vanilla(), mafia)
+    alice = m.Player("Alice", examples.Hider(), town)
+    bob = m.Player("Bob", examples.Vanilla(), town)
+    carol = m.Player("Carol", examples.Vigilante(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
 
     game.add_player(alice, bob, carol, eve)
 
@@ -401,15 +401,15 @@ def test_hider() -> None:
 
 def test_traffic_analyst() -> None:
     r = PrintResolver()
-    town = normal.Town()
-    mafia = normal.Mafia()
-    game = core.Game(start_phase=core.Phase.NIGHT)
+    town = examples.Town()
+    mafia = examples.Mafia()
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
-    alice = core.Player("Alice", normal.Traffic_Analyst(), town)
-    bob = core.Player("Bob", normal.Mason(), town)
-    carol = core.Player("Carol", normal.Mason(), town)
-    dave = core.Player("Dave", normal.Messenger(), town)
-    eve = core.Player("Eve", normal.Vanilla(), mafia)
+    alice = m.Player("Alice", examples.Traffic_Analyst(), town)
+    bob = m.Player("Bob", examples.Mason(), town)
+    carol = m.Player("Carol", examples.Mason(), town)
+    dave = m.Player("Dave", examples.Messenger(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
 
     game.add_player(alice, bob, carol, dave, eve)
 
@@ -418,11 +418,11 @@ def test_traffic_analyst() -> None:
     game.visits.append(r.make_visit(game, alice, (bob,), AT.ACTION, 0))
     r.resolve_game(game)
 
-    game.phase, game.day_no = core.Phase.NIGHT, 2
+    game.phase, game.day_no = m.Phase.NIGHT, 2
     game.visits.append(r.make_visit(game, alice, (dave,), AT.ACTION, 0))
     r.resolve_game(game)
 
-    game.phase, game.day_no = core.Phase.NIGHT, 3
+    game.phase, game.day_no = m.Phase.NIGHT, 3
     game.visits.append(r.make_visit(game, alice, (eve,), AT.ACTION, 0))
     r.resolve_game(game)
     print()
@@ -442,15 +442,15 @@ def test_traffic_analyst() -> None:
 
 def test_universal_backup() -> None:
     r = PrintResolver()
-    town = normal.Town()
-    mafia = normal.Mafia()
-    game = core.Game(start_phase=core.Phase.NIGHT)
+    town = examples.Town()
+    mafia = examples.Mafia()
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
-    alice = core.Player("Alice", normal.Universal_Backup(), town)
-    bob = core.Player("Bob", normal.Vigilante(), town)
-    carol = core.Player("Carol", normal.Cop(), town)
-    dave = core.Player("Dave", normal.Doctor(), mafia)
-    eve = core.Player("Eve", normal.Vanilla(), mafia)
+    alice = m.Player("Alice", examples.Universal_Backup(), town)
+    bob = m.Player("Bob", examples.Vigilante(), town)
+    carol = m.Player("Carol", examples.Cop(), town)
+    dave = m.Player("Dave", examples.Doctor(), mafia)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
 
     game.add_player(alice, bob, carol, dave, eve)
 
@@ -459,7 +459,7 @@ def test_universal_backup() -> None:
     game.visits.append(r.make_visit(game, bob, (carol,), AT.ACTION, 0))
     game.visits.append(r.make_visit(game, eve, (dave,), AT.SHARED_ACTION, 0, {"factional"}))
     r.resolve_game(game)
-    game.phase, game.day_no = core.Phase.DAY, 2
+    game.phase, game.day_no = m.Phase.DAY, 2
     r.add_passives(game)
     print()
     pprint(game)
@@ -471,14 +471,14 @@ def test_universal_backup() -> None:
 
 def test_activated() -> None:
     r = PrintResolver()
-    town = normal.Town()
-    mafia = normal.Mafia()
-    game = core.Game(start_phase=core.Phase.NIGHT)
-    activated = normal.Activated()
+    town = examples.Town()
+    mafia = examples.Mafia()
+    game = m.Game(start_phase=m.Phase.NIGHT)
+    activated = examples.Activated()
 
-    alice = core.Player("Alice", activated(normal.Bulletproof)(), town)
-    bob = core.Player("Bob", activated(normal.Bulletproof)(), town)
-    eve = core.Player("Eve", normal.Vanilla(), mafia)
+    alice = m.Player("Alice", activated(examples.Bulletproof)(), town)
+    bob = m.Player("Bob", activated(examples.Bulletproof)(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
 
     game.add_player(alice, bob, eve)
 
@@ -497,13 +497,13 @@ def test_activated() -> None:
 
 def test_ninja() -> None:
     r = PrintResolver()
-    town = normal.Town()
-    mafia = normal.Mafia()
-    game = core.Game(start_phase=core.Phase.NIGHT)
+    town = examples.Town()
+    mafia = examples.Mafia()
+    game = m.Game(start_phase=m.Phase.NIGHT)
 
-    alice = core.Player("Alice", normal.Watcher(), town)
-    bob = core.Player("Bob", normal.Vanilla(), town)
-    eve = core.Player("Eve", normal.Ninja(), mafia)
+    alice = m.Player("Alice", examples.Watcher(), town)
+    bob = m.Player("Bob", examples.Vanilla(), town)
+    eve = m.Player("Eve", examples.Ninja(), mafia)
 
     game.add_player(alice, bob, eve)
 
@@ -524,14 +524,14 @@ def test_ninja() -> None:
 
 def test_personal() -> None:
     r = PrintResolver()
-    town = normal.Town()
-    mafia = normal.Mafia()
-    game = core.Game(start_phase=core.Phase.NIGHT)
-    personal = normal.Personal()
+    town = examples.Town()
+    mafia = examples.Mafia()
+    game = m.Game(start_phase=m.Phase.NIGHT)
+    personal = examples.Personal()
 
-    alice = core.Player("Alice", personal(normal.Watcher)(), town)
-    bob = core.Player("Bob", normal.Vanilla(), town)
-    eve = core.Player("Eve", normal.Vanilla(), mafia)
+    alice = m.Player("Alice", personal(examples.Watcher)(), town)
+    bob = m.Player("Bob", examples.Vanilla(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
 
     game.add_player(alice, bob, eve)
 
@@ -551,13 +551,13 @@ def test_personal() -> None:
 
 def test_combine() -> None:
     r = PrintResolver()
-    town = normal.Town()
-    mafia = normal.Mafia()
-    game = core.Game(start_phase=core.Phase.NIGHT)
-    combined = core.Role.combine(normal.Bulletproof, normal.Cop)
+    town = examples.Town()
+    mafia = examples.Mafia()
+    game = m.Game(start_phase=m.Phase.NIGHT)
+    combined = m.Role.combine(examples.Bulletproof, examples.Cop)
 
-    alice = core.Player("Alice", combined(), town)
-    eve = core.Player("Eve", normal.Vanilla(), mafia)
+    alice = m.Player("Alice", combined(), town)
+    eve = m.Player("Eve", examples.Vanilla(), mafia)
 
     game.add_player(alice, eve)
 
@@ -575,10 +575,10 @@ def test_combine() -> None:
     )
 
 def test_api_v1() -> None:
-    from .api.v1 import api_bp
+    from api_v1 import api, games
     from flask import Flask
     app = Flask(__name__)
-    app.register_blueprint(api_bp)
+    app.register_blueprint(api)
     with app.test_client() as client:
         response = client.post(
             "/api/v1/games",
@@ -768,7 +768,7 @@ def test_api_v1() -> None:
         assert response.json["players"][0]["is_alive"], "Expected Alice to be alive"
         assert response.json["players"][1]["is_alive"], "Expected Bob to be alive"
         assert response.json["players"][2]["is_alive"], "Expected Eve to be alive"
-        assert response.json["phase"] == core.Phase.NIGHT.value, "Expected phase to be NIGHT"
+        assert response.json["phase"] == m.Phase.NIGHT.value, "Expected phase to be NIGHT"
 
     with app.test_client() as client:
         response = client.post(
@@ -876,10 +876,6 @@ def main() -> int:
         verbose = True
         use_mypy = True
         mypy_verbose = True
-    if "-mav" in argv or "-mva" in argv or "--mypy-abort-verbose" in argv or "--mypy-verbose-abort" in argv:
-        use_mypy = True
-        mypy_verbose = True
-        mypy_abort_if_error = True
 
     successes: int = 0
     failed_tests: list[str] = []

@@ -1,21 +1,32 @@
-"""
-API v0. Use API v1 instead for new projects, but this API will remain in case
-I didn't transfer over something from v0 to v1.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Callable
 import re
+from itertools import count
 import random
+from secrets import token_urlsafe
 from typing import Any
 
 from flask import Blueprint, request
 from markupsafe import escape, Markup
+from werkzeug.datastructures import Headers
 
-from mafia import core
-from mafia import normal
-from mafia.api.core import Game, resolver, get_permissions, games, game_count
+import mafia as m
+import examples as ex
+
+# CUSTOM EXTENSIONS #
+
+class Game(m.Game):
+    def __init__(self, *args: Any, mod_token: str | None = None, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        if mod_token is None:
+            mod_token = token_urlsafe(16)
+        self.mod_token = mod_token
+        self.chats["global"] = m.Chat()
+        self.queued_visits: list[m.Visit] = []
+
+
+r = ex.Resolver()
 
 # HELPER FUNCTIONS #
 
@@ -23,7 +34,7 @@ def slugify(obj: object) -> str:
     return re.sub(r"\s", "-", str(obj))
 
 
-def role(player: core.Player) -> Markup:
+def role(player: m.Player) -> Markup:
     return Markup(
         f'<span class="role_name Alignment-{slugify(escape(player.alignment))}">'
         f"{escape(player.role_name)}</span>",
@@ -31,10 +42,16 @@ def role(player: core.Player) -> Markup:
 
 # API V0 ENDPOINTS #
 
-api_bp = Blueprint("api_v0", __name__, url_prefix="/api/v0")
+api = Blueprint("api_v0", __name__, url_prefix="/api/v0")
+
+def get_permissions(game: Game, headers: Headers) -> tuple[str | None, m.Player | None]:
+    mod_token: str | None = headers.get("Authorization-Mod-Token")
+    player_name: str | None = headers.get("Authorization-Player-Name")
+    player: m.Player | None = next((p for p in game.players if p.name == player_name), None)
+    return mod_token, player
 
 
-@api_bp.get("/games")
+@api.get("/games")
 def api_v0_games() -> Any:
     """
     Get a list of games.
@@ -64,7 +81,7 @@ def api_v0_games() -> Any:
     }
 
 
-@api_bp.post("/games")
+@api.post("/games")
 def api_v0_create_game() -> Any:
     """Create a new game.
 
@@ -104,7 +121,7 @@ def api_v0_create_game() -> Any:
         return {"message": "Missing 'roles' field"}, 400
 
     body.setdefault("start_day", 1)
-    body.setdefault("start_phase", core.Phase.DAY.name)
+    body.setdefault("start_phase", m.Phase.DAY.name)
     body.setdefault("shuffle_roles", True)
 
     # Field type validation
@@ -137,10 +154,10 @@ def api_v0_create_game() -> Any:
     if len(body["players"]) != len(body["roles"]):
         return {"message": "'players' and 'roles' fields have different lengths"}, 400
     try:
-        phase: core.Phase = core.Phase(body["start_phase"])
+        phase: m.Phase = m.Phase(body["start_phase"])
     except ValueError:
         try:
-            phase = core.Phase[body["start_phase"]]
+            phase = m.Phase[body["start_phase"]]
         except KeyError:
             return {
                 "message": f"'start_phase' field is not a valid phase: {body['start_phase']}"
@@ -148,21 +165,21 @@ def api_v0_create_game() -> Any:
 
     # Create game
     role_list = []
-    roles: dict[str, type[core.Role] | Callable[..., core.Role]] = {}
-    alignments: dict[str, core.Alignment] = {}
+    roles: dict[str, type[m.Role] | Callable[..., m.Role]] = {}
+    alignments: dict[str, m.Alignment] = {}
 
     for role_align in body["roles"]:
         role_name = role_align["role"]
         alignment_name = role_align["alignment"]
         if role_name not in roles:
-            role_type = normal.ROLES.get(role_name)
+            role_type = ex.ROLES.get(role_name)
             if role_type is None:
                 return {"message": f"Role '{role_name}' does not exist"}, 400
             roles[role_name] = role_type
         else:
             role_type = roles[role_name]
         if alignment_name not in alignments:
-            alignment_type = normal.ALIGNMENTS.get(alignment_name)
+            alignment_type = ex.ALIGNMENTS.get(alignment_name)
             if alignment_type is None:
                 return {"message": f"Alignment '{alignment_name}' does not exist"}, 400
             alignment = alignment_type()
@@ -180,14 +197,14 @@ def api_v0_create_game() -> Any:
         game = Game(body["start_day"], phase)
     game.chats["global"].send("System", "Welcome to the game!")
     for player_name, (role, alignment) in zip(body["players"], role_list):
-        game.add_player(core.Player(player_name, role, alignment))
+        game.add_player(m.Player(player_name, role, alignment))
 
     id = next(game_count)
     games[id] = game
     return {"game_id": id, "mod_token": game.mod_token}, 201
 
 
-@api_bp.get("/games/<int:id>")
+@api.get("/games/<int:id>")
 def api_v0_get_game(id: int) -> Any:
     """Get game overview.
 
@@ -254,7 +271,7 @@ def api_v0_get_game(id: int) -> Any:
     }
 
 
-@api_bp.put("/games/<int:id>")
+@api.put("/games/<int:id>")
 def api_v0_update_game(id: int) -> Any:
     """Update game data.
 
@@ -294,10 +311,10 @@ def api_v0_update_game(id: int) -> Any:
     if not isinstance(body["day_no"], int):
         return {"message": "'day_no' field is not an integer"}, 400
     try:
-        phase: core.Phase = core.Phase(body["phase"])
+        phase: m.Phase = m.Phase(body["phase"])
     except ValueError:
         try:
-            phase = core.Phase[body["start_phase"]]
+            phase = m.Phase[body["start_phase"]]
         except KeyError:
             return {
                 "message": f"'start_phase' field is not a valid phase: {body['start_phase']}"
@@ -308,7 +325,7 @@ def api_v0_update_game(id: int) -> Any:
     return "", 204
 
 
-@api_bp.patch("/games/<int:id>")
+@api.patch("/games/<int:id>")
 def api_v0_patch_game(id: int) -> Any:
     """Update game data.
 
@@ -345,13 +362,13 @@ def api_v0_patch_game(id: int) -> Any:
             if v.is_active_time(game):
                 game.visits.append(v)
     if "resolve" in body["actions"]:
-        resolver.resolve_game(game)
+        r.resolve_game(game)
     if "next_phase" in body["actions"]:
         game.advance_phase()
     return "", 204
 
 
-@api_bp.get("/games/<int:game_id>/players")
+@api.get("/games/<int:game_id>/players")
 def api_v0_get_players(game_id: int) -> Any:
     """Get an array of players.
 
@@ -362,7 +379,7 @@ def api_v0_get_players(game_id: int) -> Any:
     return api_v0_get_game(game_id)["players"]
 
 
-@api_bp.get("/games/<int:game_id>/players/<string:name>")
+@api.get("/games/<int:game_id>/players/<string:name>")
 def api_v0_get_player(game_id: int, name: str) -> Any:
     """Get player-specific information.
 
@@ -448,7 +465,7 @@ def api_v0_get_player(game_id: int, name: str) -> Any:
     }
 
 
-@api_bp.get("/games/<int:game_id>/players/<string:name>/abilities")
+@api.get("/games/<int:game_id>/players/<string:name>/abilities")
 def api_v0_get_abilities(game_id: int, name: str) -> Any:
     """Get a list of abilities a player has.
 
@@ -508,7 +525,7 @@ def api_v0_get_abilities(game_id: int, name: str) -> Any:
                 "immediate": a.immediate,
                 "target_count": a.target_count,
                 "targets": [
-                    [t.name for t in targets] for targets in normal.get_valid_targets(a, game, player)
+                    [t.name for t in targets] for targets in ex.get_valid_targets(a, game, player)
                 ]
                 if a.target_count > 0
                 else [],
@@ -539,7 +556,7 @@ def api_v0_get_abilities(game_id: int, name: str) -> Any:
                 "immediate": a.immediate,
                 "target_count": a.target_count,
                 "targets": [
-                    [t.name for t in targets] for targets in normal.get_valid_targets(a, game, player)
+                    [t.name for t in targets] for targets in ex.get_valid_targets(a, game, player)
                 ]
                 if a.target_count > 0
                 else [],
@@ -562,7 +579,7 @@ def api_v0_get_abilities(game_id: int, name: str) -> Any:
     }
 
 
-@api_bp.post("/games/<int:game_id>/players/<string:name>/abilities")
+@api.post("/games/<int:game_id>/players/<string:name>/abilities")
 def api_v0_queue_ability(game_id: int, name: str) -> Any:
     """Queue an action.
 
@@ -646,11 +663,11 @@ def api_v0_queue_ability(game_id: int, name: str) -> Any:
                 game,
                 player,
                 targets,
-                visit=core.Visit(
+                visit=m.Visit(
                     actor=player,
                     targets=tuple(targets),
                     ability=ability,
-                    ability_type=core.AbilityType.ACTION,
+                    ability_type=m.AbilityType.ACTION,
                     game=game,
                 ),
             )
@@ -661,11 +678,11 @@ def api_v0_queue_ability(game_id: int, name: str) -> Any:
         if prev_visit is not None:
             game.queued_visits.remove(prev_visit)
         game.queued_visits.append(
-            core.Visit(
+            m.Visit(
                 actor=player,
                 targets=tuple(targets),
                 ability=ability,
-                ability_type=core.AbilityType.ACTION,
+                ability_type=m.AbilityType.ACTION,
                 game=game,
             )
         )
@@ -711,11 +728,11 @@ def api_v0_queue_ability(game_id: int, name: str) -> Any:
                 game,
                 player,
                 targets,
-                visit=core.Visit(
+                visit=m.Visit(
                     actor=player,
                     targets=tuple(targets),
                     ability=ability,
-                    ability_type=core.AbilityType.SHARED_ACTION,
+                    ability_type=m.AbilityType.SHARED_ACTION,
                     game=game,
                 ),
             )
@@ -727,18 +744,18 @@ def api_v0_queue_ability(game_id: int, name: str) -> Any:
         if prev_visit is not None:
             game.queued_visits.remove(prev_visit)
         game.queued_visits.append(
-            core.Visit(
+            m.Visit(
                 actor=player,
                 targets=tuple(targets),
                 ability=ability,
-                ability_type=core.AbilityType.SHARED_ACTION,
+                ability_type=m.AbilityType.SHARED_ACTION,
                 game=game,
             )
         )
     return "", 204
 
 
-@api_bp.get("/games/<int:game_id>/players/<string:name>/messages")
+@api.get("/games/<int:game_id>/players/<string:name>/messages")
 def api_v0_get_messages(game_id: int, name: str) -> Any:
     """Get a player's private messages (zero-indexed).
 
@@ -793,7 +810,7 @@ def api_v0_get_messages(game_id: int, name: str) -> Any:
     }
 
 
-@api_bp.post("/games/<int:game_id>/players/<string:name>/messages")
+@api.post("/games/<int:game_id>/players/<string:name>/messages")
 def api_v0_send_message(game_id: int, name: str) -> Any:
     """Send a private message to a player.
 
@@ -838,7 +855,7 @@ def api_v0_send_message(game_id: int, name: str) -> Any:
     )
 
 
-@api_bp.get("/games/<int:game_id>/chats")
+@api.get("/games/<int:game_id>/chats")
 def api_v0_get_chats(game_id: int) -> Any:
     """Get an array of chats.
 
@@ -849,7 +866,7 @@ def api_v0_get_chats(game_id: int) -> Any:
     return api_v0_get_game(game_id)["chats"]
 
 
-@api_bp.get("/games/<int:game_id>/chats/<string:chat_id>")
+@api.get("/games/<int:game_id>/chats/<string:chat_id>")
 def api_v0_get_chat(game_id: int, chat_id: str) -> Any:
     """Get a chat's data.
 
@@ -883,7 +900,7 @@ def api_v0_get_chat(game_id: int, chat_id: str) -> Any:
     }
 
 
-@api_bp.get("/games/<int:game_id>/chats/<string:chat_id>/messages")
+@api.get("/games/<int:game_id>/chats/<string:chat_id>/messages")
 def api_v0_get_chat_messages(game_id: int, chat_id: str) -> Any:
     """Get chat messages (zero-indexed).
 
@@ -931,8 +948,8 @@ def api_v0_get_chat_messages(game_id: int, chat_id: str) -> Any:
     }
 
 
-@api_bp.post("/games/<int:game_id>/chats/<string:chat_id>")
-@api_bp.post("/games/<int:game_id>/chats/<string:chat_id>/messages")
+@api.post("/games/<int:game_id>/chats/<string:chat_id>")
+@api.post("/games/<int:game_id>/chats/<string:chat_id>/messages")
 def api_v0_send_chat_message(game_id: int, chat_id: str) -> Any:
     """Send a chat message. Message is attributed to the authorized sender.
 
@@ -971,3 +988,7 @@ def api_v0_send_chat_message(game_id: int, chat_id: str) -> Any:
         return {"message": "'content' field is not a string"}, 400
     chat.send(player.name if player is not None else "Moderator", body["content"])
     return "", 204
+
+
+games: dict[int, Game] = {}
+game_count = count(0)
