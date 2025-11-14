@@ -2,6 +2,7 @@ test_results/
 
 .replit
 uv.lock
+pyproject.toml
 .vscode/
 
 # Byte-compiled / optimized / DLL files
