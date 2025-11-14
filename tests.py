@@ -5,7 +5,8 @@ from mafia import core
 from mafia.core import AbilityType as AT
 from mafia.core import VisitStatus as VS
 from mafia import normal
-
+from mafia.api.v1 import api_bp
+from flask import Flask
 
 class PrintResolver(normal.Resolver):
     def resolve_visit(self, game: core.Game, visit: core.Visit) -> int:
@@ -575,8 +576,6 @@ def test_combine() -> None:
     )
 
 def test_api_v1() -> None:
-    from .api.v1 import api_bp
-    from flask import Flask
     app = Flask(__name__)
     app.register_blueprint(api_bp)
     with app.test_client() as client:
@@ -810,13 +809,13 @@ def test_api_v1() -> None:
 
 def test_voting() -> None:
     r = PrintResolver()
-    town = examples.Town()
-    mafia = examples.Mafia()
-    game = m.Game(start_phase=m.Phase.DAY)
+    town = normal.Town()
+    mafia = normal.Mafia()
+    game = core.Game(start_phase=core.Phase.DAY)
 
-    alice = m.Player("Alice", examples.Vanilla(), town)
-    bob = m.Player("Bob", examples.Vanilla(), town)
-    eve = m.Player("Eve", examples.Vanilla(), mafia)
+    alice = core.Player("Alice", normal.Vanilla(), town)
+    bob = core.Player("Bob", normal.Vanilla(), town)
+    eve = core.Player("Eve", normal.Vanilla(), mafia)
 
     game.add_player(alice, bob, eve)
 
@@ -833,7 +832,7 @@ def test_voting() -> None:
     assert elim is eve, "Vote did not resolve to Eve"
     assert not eve.is_alive, "Eve is alive, expected to be killed"
     assert eve.death_causes == ["Vote"], "Eve's death cause is not Vote"
-    assert game.time == (1, m.Phase.NIGHT), "Game did not advance to night"
+    assert game.time == (1, core.Phase.NIGHT), "Game did not advance to night"
     assert not r.vote_ongoing(game), "Vote is ongoing during night"
 
 # DO TESTS #

@@ -159,8 +159,8 @@ def game_patch(id: int, body: models.GamePatchRequestModel) -> models.EmptyRespo
                     game.visits.append(v)
             game.queued_visits.clear()
             resolver.resolve_game(game)
-        elif action == "next_phase":
-            game.next_phase()
+        elif action == "next_phase" or action == "advance_phase":
+            game.advance_phase()
     return "", 204
 
 @api_bp.get("/games/<int:id>/players")
