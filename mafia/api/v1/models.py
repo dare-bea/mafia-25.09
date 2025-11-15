@@ -242,3 +242,7 @@ class GameVotesResponseModel(BaseModel):
     votes: dict[str, str | None]
     vote_counts: dict[str, list[str]]
     no_elim_vote_count: list[str]
+
+class ObjectReferenceModel(BaseModel):
+    name: str
+    description: str | None = None

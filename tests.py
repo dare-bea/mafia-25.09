@@ -883,20 +883,20 @@ def main() -> int:
     successes: int = 0
     failed_tests: list[str] = []
     DIR = Path(__file__).parent
-    makedirs(DIR / "results", exist_ok=True)
+    makedirs(DIR / "test_results", exist_ok=True)
     for test_name, test_func in TESTS.items():
         if verbose:
             print(f"## TESTING: {test_name}() ##")
         try:
-            with open(DIR / "results" / f"{test_name}.log", "w") as f:
+            with open(DIR / "test_results" / f"{test_name}.log", "w") as f:
                 with redirect_stdout(f):
                     test_func()
         except Exception as e:
             if verbose:
-                with open(DIR / "results" / f"{test_name}.log", "r") as f:
+                with open(DIR / "test_results" / f"{test_name}.log", "r") as f:
                     print(f.read())
                 print_exception(e)
-            with open(DIR / "results" / f"{test_name}.log", "a") as f:
+            with open(DIR / "test_results" / f"{test_name}.log", "a") as f:
                 print_exception(e, file=f)
             print(f"## TEST {test_name} FAILED ##")
             failed_tests.append(test_name)

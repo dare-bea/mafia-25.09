@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Callable
+from typing import Any, Callable
 import random
 
 from flask import Blueprint, request
@@ -8,6 +8,7 @@ from flask_pydantic import validate  # type: ignore[import-untyped]
 from mafia import core
 from mafia.api.core import Game, resolver, get_permissions, games, game_count
 from . import models
+from mafia import normal
 
 api_bp = Blueprint("api_v1", __name__, url_prefix="/api/v1")
 
@@ -596,3 +597,48 @@ def game_player_unvote(id: int, name: str) -> models.EmptyResponse | models.Erro
         return {"message": "Not a voting phase"}, 400
     game.unvote(player)
     return "", 204
+
+
+@api_bp.get("/reference/roles")
+@validate()  # type: ignore[misc]
+def roles_list() -> list[models.ObjectReferenceModel]:
+    return [
+        models.ObjectReferenceModel(
+            name=name,
+            description=role.__doc__
+        )
+        for name, role in normal.ROLES.items()
+    ]
+    
+@api_bp.get("/reference/combined-roles")
+@validate()  # type: ignore[misc]
+def combined_roles_list() -> list[models.ObjectReferenceModel]:
+    return [
+        models.ObjectReferenceModel(
+            name=name,
+            description=role.__doc__
+        )
+        for name, role in normal.COMBINED_ROLES.items()
+    ]
+    
+@api_bp.get("/reference/modifiers")
+@validate()  # type: ignore[misc]
+def modifiers_list() -> list[models.ObjectReferenceModel]:
+    return [
+        models.ObjectReferenceModel(
+            name=name,
+            description=role.__doc__
+        )
+        for name, role in normal.MODIFIERS.items()
+    ]
+
+@api_bp.get("/reference/alignments")
+@validate()  # type: ignore[misc]
+def alignments_list() -> list[models.ObjectReferenceModel]:
+    return [
+        models.ObjectReferenceModel(
+            name=name,
+            description=role.__doc__
+        )
+        for name, role in normal.ALIGNMENTS.items()
+    ]
