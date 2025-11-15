@@ -1,6 +1,6 @@
 [project]
 name = "mafia"
-version = "0.2.0"
+version = "0.3.0"
 description = "The Mafia party game implemented in Python."
 authors = [
     { name = "dare-bea"}
