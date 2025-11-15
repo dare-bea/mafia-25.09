@@ -9,7 +9,7 @@ from secrets import token_urlsafe
 from typing import Any
 from itertools import count
 
-from mafia.core import Game as BaseGame
+from mafia.normal import Game as BaseGame
 from mafia.core import Player, Chat, Visit
 from mafia.normal import Resolver
 
@@ -19,7 +19,6 @@ class Game(BaseGame):
         if mod_token is None:
             mod_token = token_urlsafe(16)
         self.mod_token = mod_token
-        self.chats["global"] = Chat()
         self.queued_visits: list[Visit] = []
 
     def advance_phase(self) -> tuple[int, Any]:

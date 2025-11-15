@@ -594,7 +594,7 @@ def test_api_v1() -> None:
                     {
                         "role": {
                             "type": "combined_role",
-                            "id": "Jack_of_All_Trades",
+                            "id": "Jack of All Trades",
                             "roles": [
                                 {
                                     "type": "role",
@@ -611,7 +611,7 @@ def test_api_v1() -> None:
                     {
                         "role": {
                             "type": "modifier",
-                            "id": "XShot",
+                            "id": "X-Shot",
                             "params": {
                                 "max_uses": 1
                             },

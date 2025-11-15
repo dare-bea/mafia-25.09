@@ -160,6 +160,10 @@ def game_patch(id: int, body: models.GamePatchRequestModel) -> models.EmptyRespo
             resolver.resolve_game(game)
         elif action == "next_phase" or action == "advance_phase":
             game.advance_phase()
+        elif action == "clear_votes":
+            game.votes.clear()
+        elif action == "post_vote_count":
+            game.post_vote_count("global")
     return "", 204
 
 @api_bp.get("/games/<int:id>/players")
@@ -568,7 +572,7 @@ def game_player_vote(id: int, name: str, body: models.PlayerVoteRequestModel) ->
     if body.target is None:
         game.vote(player, None)
     else:
-        target = next((p for p in game.players if p.name == body.target), None)
+        target = next((p for p in game.alive_players if p.name == body.target), None)
         if target is None:
             return {"message": "Target not found"}, 404
         game.vote(player, target)

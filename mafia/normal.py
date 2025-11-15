@@ -17,16 +17,58 @@ from mafia.core import (
     Modifier,
     Role,
     Ability,
-    Game,
     Player,
     Visit,
     VisitStatus,
     WinResult,
 )
+import mafia.core as core
 from .nodes import nodes_in_cycles
 
 
-def roleblock_player(game: Game, player: Player, visit: Visit | None = None) -> VisitStatus:
+class Game(core.Game):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.chats["global"] = Chat()
+    
+    def vote(self, player: Player, target: Player | None) -> None:
+        super().vote(player, target)
+        if target is not None:
+            self.chats["global"].send(
+                "Vote", f"{player.name} voted for {target.name}."
+            )
+        else:
+            self.chats["global"].send(
+                "Vote", f"{player.name} voted to not eliminate anyone."
+            )
+
+    def unvote(self, player: Player) -> None:
+        super().unvote(player)
+        self.chats["global"].send("Unvote", f"{player.name} unvoted.")
+
+    def vote_count(self) -> str:
+        message = ""
+        for p in self.players:
+            voters = tuple(self.get_voters(p))
+            if voters:
+                message += f"{p.name} ({len(voters)}): {', '.join(v.name for v in voters)}\n"
+        no_elimers = tuple(self.get_voters(None))
+        if no_elimers:
+            message += f"No Elimination ({len(no_elimers)}): {', '.join(v.name for v in no_elimers)}\n\n"
+
+        non_voters = tuple(
+            p.name for p in self.alive_players
+            if p not in self.votes
+        )
+        if non_voters:
+            message += f"Not Voting ({len(non_voters)}): {', '.join(non_voters)}\n"
+
+        return message.rstrip("\n")
+
+    def post_vote_count(self, chat_id: str) -> None:
+        self.chats[chat_id].send("Vote Count", self.vote_count().rstrip("\n"))
+
+def roleblock_player(game: core.Game, player: Player, visit: Visit | None = None) -> VisitStatus:
     """Roleblocks a player."""
     success = VisitStatus.FAILURE
     for v in player.get_visits(game):
@@ -39,7 +81,7 @@ def roleblock_player(game: Game, player: Player, visit: Visit | None = None) -> 
     return success
 
 
-def visit_is_visible(visit: Visit, game: Game) -> bool:
+def visit_is_visible(visit: Visit, game: core.Game) -> bool:
     return (
         visit.ability_type is not AbilityType.PASSIVE
         and "hidden" not in visit.tags
@@ -54,7 +96,7 @@ class Resolver:
 
     lazy_allowed: bool = True
 
-    def do_visit(self, game: Game, visit: Visit) -> int:
+    def do_visit(self, game: core.Game, visit: Visit) -> int:
         status = visit.perform(game)
         visit.status = status
         if visit.ability_type is AbilityType.PASSIVE and status != VisitStatus.PENDING:
@@ -62,7 +104,7 @@ class Resolver:
             visit.actor.uses[visit.ability] += status
         return status
 
-    def resolve_visit(self, game: Game, visit: Visit) -> int:
+    def resolve_visit(self, game: core.Game, visit: Visit) -> int:
         """Resolve a visit and return the result. If the visit cannot be resolved, return VisitStatus.PENDING."""
         # Prevent if the visit is lazy and lazy is not allowed.
         if "lazy" in visit.tags and not self.lazy_allowed:
@@ -106,7 +148,7 @@ class Resolver:
         # Perform the visit.
         return self.do_visit(game, visit)
 
-    def resolve_game(self, game: Game) -> None:
+    def resolve_game(self, game: core.Game) -> None:
         """Resolve all visits in the game."""
         for visit in game.visits:
             if visit.ability_type is not AbilityType.PASSIVE and visit.is_active(game):
@@ -149,7 +191,7 @@ class Resolver:
                     visit.ability.id, "Your ability failed, and you did not recieve a result."
                 )
 
-    def resolve_cycles(self, game: Game) -> bool:
+    def resolve_cycles(self, game: core.Game) -> bool:
         successfully_resolved: bool = False
 
         # Check for mutual roleblocks and invoke the Catastrophic Rule.
@@ -164,7 +206,7 @@ class Resolver:
 
         return successfully_resolved
 
-    def add_passives(self, game: Game) -> None:
+    def add_passives(self, game: core.Game) -> None:
         for player in game.players:
             for ability in player.passives:
                 if ability.check(game, player):
@@ -178,7 +220,7 @@ class Resolver:
 
     def make_visit(
         self,
-        game: Game,
+        game: core.Game,
         actor: Player,
         targets: tuple[Player, ...] | None,
         ability_type: AbilityType,
@@ -211,11 +253,11 @@ class Resolver:
             player_inputs=tuple(player_inputs),
         )
 
-    def check_lazy_allowed(self, game: Game) -> bool:
+    def check_lazy_allowed(self, game: core.Game) -> bool:
         self.lazy_allowed = sum(bool("town" not in p.alignment.tags) for p in game.players) > 1
         return self.lazy_allowed
 
-    def vote_ongoing(self, game: Game) -> bool:
+    def vote_ongoing(self, game: core.Game) -> bool:
         if not game.is_voting_phase():
             return False
         elim = self.vote_elimination(game)
@@ -225,7 +267,7 @@ class Resolver:
             return False
         return True
 
-    def vote_elimination(self, game: Game) -> Player | None:
+    def vote_elimination(self, game: core.Game) -> Player | None:
         if not game.is_voting_phase():
             return None
         for p in game.players:
@@ -233,7 +275,7 @@ class Resolver:
                 return p
         return None
 
-    def resolve_vote(self, game: Game) -> Player | None:
+    def resolve_vote(self, game: core.Game) -> Player | None:
         if not game.is_voting_phase() or self.vote_ongoing(game):
             return None
         elim = self.vote_elimination(game)
@@ -260,7 +302,7 @@ class Kill(Ability):
     tags = frozenset({"kill"})
     killer: str
 
-    def check(self, game: Game, actor: Player, targets: Sequence[Player] | None = None) -> bool:
+    def check(self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None) -> bool:
         return (
             super().check(game, actor, targets)
             and (
@@ -272,7 +314,7 @@ class Kill(Ability):
         )
 
     def perform(
-        self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit
+        self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit
     ) -> VisitStatus:
         if targets is None:
             targets = tuple(actor for _ in range(self.target_count))
@@ -291,7 +333,7 @@ class InvestigativeAbility(Ability, ABC):
     tags = frozenset({"investigate"})
 
     def perform(
-        self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit
+        self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit
     ) -> VisitStatus:
         if targets is None:
             targets = tuple(actor for _ in range(self.target_count))
@@ -301,7 +343,7 @@ class InvestigativeAbility(Ability, ABC):
         return VisitStatus.SUCCESS
 
     @abstractmethod
-    def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str: ...
+    def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str: ...
 
 
 class Rolestop(Ability):
@@ -310,7 +352,7 @@ class Rolestop(Ability):
     tags = frozenset({"rolestop"})
 
     def perform(
-        self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit
+        self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit
     ) -> int:
         if targets is None:
             targets = tuple(actor for _ in range(self.target_count))
@@ -366,7 +408,7 @@ class ProtectiveAbility(Rolestop):
     tags = frozenset({"protect"})
 
     def perform(
-        self, game: Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit
+        self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit
     ) -> int:
         if targets is None:
             targets = tuple(actor for _ in range(self.target_count))
@@ -427,7 +469,7 @@ class Cop(Role):
 
         tags = frozenset({"investigate", "gun"})
 
-        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
             if "town" in target.alignment.tags:
                 return f"{target.name} is aligned with the Town."
             else:
@@ -459,7 +501,7 @@ class Friendly_Neighbor(Role):
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -489,7 +531,7 @@ class Gunsmith(Role):
 
         tags = frozenset({"investigate", "gun"})
 
-        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
             if any(
                 "gun" in a.tags
                 for a in [*target.actions, *target.passives, *target.shared_actions]
@@ -517,14 +559,14 @@ class Innocent_Child(Role):
         tags = frozenset({"inform"})
 
         def check(
-            self, game: Game, actor: Player, targets: Sequence[Player] | None = None
+            self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None
         ) -> bool:
             # Innocent Child can only be used once.
             return super().check(game, actor, targets) and actor.uses.get(self, 0) == 0
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -545,7 +587,7 @@ class Jailkeeper(Role):
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -575,7 +617,7 @@ class Juggernaut(Role):
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -605,7 +647,7 @@ class Juggernaut(Role):
             return successes
 
         def check(
-            self, game: Game, actor: Player, targets: Sequence[Player] | None = None
+            self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None
         ) -> bool:
             # Juggernaut can only target self.
             return (
@@ -635,7 +677,7 @@ class Macho(Role):
 class Mason(Role):
     """Can chat with other Masons."""
 
-    def player_init(self, game: Game, player: Player) -> None:
+    def player_init(self, game: core.Game, player: Player) -> None:
         chat: Chat
         if self.id not in game.chats:
             chat = PrivateChat(participants={player})
@@ -655,7 +697,7 @@ class Neapolitan(Role):
     class Neapolitan(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
-        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
             if target.role.is_role(Vanilla) and "town" in target.alignment.tags:
                 return f"{target.name} is a Vanilla Townie."
             else:
@@ -670,7 +712,7 @@ class Neighborizer(Role):
     class Neighborizer(Ability):
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -691,7 +733,7 @@ class Neighborizer(Role):
             chat.send(self.id, f"{target.name} has been added into the neighborhood.")
             return VisitStatus.SUCCESS
 
-    def player_init(self, game: Game, player: Player) -> None:
+    def player_init(self, game: core.Game, player: Player) -> None:
         chat_id = f"{self.id}:{player.name}"
         game.chats[chat_id] = PrivateChat(participants={player})
         game.chats[chat_id].send(self.id, f"{player.name} is a {self.id}.")
@@ -709,7 +751,7 @@ class Roleblocker(Role):
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -729,7 +771,7 @@ class Rolecop(Role):
     class Rolecop(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
-        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
             return f"{target.name} is a {target.role.id}."
 
     actions = (Rolecop(),)
@@ -743,7 +785,7 @@ class Tracker(Role):
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -757,7 +799,7 @@ class Tracker(Role):
                 return VisitStatus.PENDING
             return super().perform(game, actor, targets, visit=visit)
 
-        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
             visits: list[Player] = []
             for v in target.get_visits(game):
                 if (
@@ -781,7 +823,7 @@ class Vanilla_Cop(Role):
     class Vanilla_Cop(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
-        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
             if target.role.is_role(Vanilla):
                 return f"{target.name} is Vanilla."
             else:
@@ -807,7 +849,7 @@ class Watcher(Role):
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -827,7 +869,7 @@ class Watcher(Role):
                 return VisitStatus.PENDING
             return super().perform(game, actor, targets, visit=visit)
 
-        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
             visits: list[Player] = []
             for v in target.get_visitors(game):
                 if (
@@ -857,7 +899,7 @@ class Alien(Role):
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -896,7 +938,7 @@ class Commuter(Role):
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -916,7 +958,7 @@ class Commuter(Role):
             return success
 
         def check(
-            self, game: Game, actor: Player, targets: Sequence[Player] | None = None
+            self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None
         ) -> bool:
             # Commuter can only target self.
             return (
@@ -947,7 +989,7 @@ class Companion(Role):
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -960,7 +1002,7 @@ class Companion(Role):
             return VisitStatus.SUCCESS
 
         def check(
-            self, game: Game, actor: Player, targets: Sequence[Player] | None = None
+            self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None
         ) -> bool:
             # Companion can only be used once.
             return super().check(game, actor, targets) and actor.uses.get(self, 0) == 0
@@ -1004,7 +1046,7 @@ class Detective(Role):
     class Detective(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
-        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
             if any(
                 "kill" in v.tags
                 for v in target.get_visits(game)
@@ -1023,7 +1065,7 @@ class Fruit_Vendor(Role):
     class Fruit_Vendor(Ability):
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -1044,7 +1086,7 @@ class Goon_Cop(Role):
     class Goon_Cop(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
-        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
             if target.role.is_role(Vanilla) and "mafia" in target.alignment.tags:
                 return f"{target.name} is a Mafia Goon!"
             else:
@@ -1073,7 +1115,7 @@ class Hider(Role):
 
             def perform(
                 self,
-                game: Game,
+                game: core.Game,
                 actor: Player,
                 targets: Sequence[Player] | None = None,
                 *,
@@ -1109,7 +1151,7 @@ class Hider(Role):
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -1164,7 +1206,7 @@ class Medical_Student(Role):
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -1189,7 +1231,7 @@ class Messenger(Role):
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -1216,7 +1258,7 @@ class Motion_Detector(Role):
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -1239,7 +1281,7 @@ class Motion_Detector(Role):
                 return VisitStatus.PENDING
             return super().perform(game, actor, targets, visit=visit)
 
-        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
             # Check if target visited someone.
             visited = any(
                 visit_is_visible(v, game) and v is not visit and Personal.can_interact(visit, v)
@@ -1261,7 +1303,7 @@ class Motion_Detector(Role):
 class Neighbor(Role):
     """Can chat with other Neighbors."""
 
-    def player_init(self, game: Game, player: Player) -> None:
+    def player_init(self, game: core.Game, player: Player) -> None:
         chat_id = f"{self.id}"
         if chat_id not in game.chats:
             game.chats[chat_id] = PrivateChat(participants={player})
@@ -1283,7 +1325,7 @@ class Ninja(Role):
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -1304,7 +1346,7 @@ class Ninja(Role):
             return successes
 
         def check(
-            self, game: Game, actor: Player, targets: Sequence[Player] | None = None
+            self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None
         ) -> bool:
             # Ninja can only target self.
             return (
@@ -1322,7 +1364,7 @@ class PT_Cop(Role):
     class PT_Cop(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
-        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
             if any(
                 target in chat.participants
                 for id, chat in game.chats.items()
@@ -1344,7 +1386,7 @@ class Reporter(Role):
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -1358,7 +1400,7 @@ class Reporter(Role):
                 return VisitStatus.PENDING
             return super().perform(game, actor, targets, visit=visit)
 
-        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
             if any(
                 visit_is_visible(v, game) and v is not visit and Personal.can_interact(visit, v)
                 for v in target.get_visits(game)
@@ -1385,7 +1427,7 @@ class Role_Watcher(Role):
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -1405,7 +1447,7 @@ class Role_Watcher(Role):
                 return VisitStatus.PENDING
             return super().perform(game, actor, targets, visit=visit)
 
-        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
             roles: list[str] = []
             for v in target.get_visitors(game):
                 if (
@@ -1428,7 +1470,7 @@ class Shield(Role):
     class Shield(ProtectiveAbility):
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -1486,7 +1528,7 @@ class Traffic_Analyst(Role):
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -1498,7 +1540,7 @@ class Traffic_Analyst(Role):
                     return VisitStatus.PENDING
             return super().perform(game, actor, targets, visit=visit)
 
-        def get_message(self, game: Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
             has_private_chat = any(
                 target in chat.participants
                 and len({p for p in chat.participants if p.is_alive}) > 1
@@ -1538,7 +1580,7 @@ class Universal_Backup(Role):
 
         def perform(
             self,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -1577,7 +1619,7 @@ class Universal_Backup(Role):
             return VisitStatus.SUCCESS
 
         def check(
-            self, game: Game, actor: Player, targets: Sequence[Player] | None = None
+            self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None
         ) -> bool:
             return (self.phase is None or game.phase == self.phase) and actor.is_alive
 
@@ -1631,7 +1673,7 @@ class XShot(AbilityModifier):
 
         def check(
             method_self: XShot.XShotPrototype,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
         ) -> bool:
@@ -1676,7 +1718,7 @@ class Night_Specific(AbilityModifier):
     def modify_ability(self, ability: type[Ability]) -> type[Ability]:
         def check(
             method_self: Ability,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
         ) -> bool:
@@ -1760,7 +1802,7 @@ class Disloyal(AbilityModifier):
     def modify_ability(self, ability: type[Ability]) -> type[Ability]:
         def perform(
             method_self: Ability,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -1790,7 +1832,7 @@ class Loyal(AbilityModifier):
     def modify_ability(self, ability: type[Ability]) -> type[Ability]:
         def perform(
             method_self: Ability,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -1820,7 +1862,7 @@ class Indecisive(AbilityModifier):
     def modify_ability(self, ability: type[Ability]) -> type[Ability]:
         def check(
             method_self: Ability,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
         ) -> bool:
@@ -1854,7 +1896,7 @@ class Non_Consecutive_Night(AbilityModifier):
     def modify_ability(self, ability: type[Ability]) -> type[Ability]:
         def check(
             method_self: Ability,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
         ) -> bool:
@@ -1888,7 +1930,7 @@ class Weak(AbilityModifier):
     def modify_ability(self, ability: type[Ability]) -> type[Ability]:
         def perform(
             method_self: Ability,
-            game: Game,
+            game: core.Game,
             actor: Player,
             targets: Sequence[Player] | None = None,
             *,
@@ -1937,7 +1979,7 @@ class Mafia(Faction):
     class Mafia_Factional_Kill(Kill):
         tags = frozenset({"kill", "factional_kill"})
 
-    def player_init(self, game: Game, player: Player) -> None:
+    def player_init(self, game: core.Game, player: Player) -> None:
         chat_id = f"faction:{self.id}"
         chat: Chat
         if chat_id not in game.chats:
@@ -1970,7 +2012,7 @@ class Serial_Killer(Faction):
     class Serial_Killer_Factional_Kill(Kill):
         tags = frozenset({"kill", "factional_kill"})
 
-    def check_win(self, game: Game, player: Player) -> WinResult:
+    def check_win(self, game: core.Game, player: Player) -> WinResult:
         # Can win as normal or if everyone is dead (even if they aren't alive)
         if not game.alive_players:
             return WinResult.WIN
