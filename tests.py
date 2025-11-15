@@ -838,25 +838,25 @@ def test_voting() -> None:
 # DO TESTS #
 
 TESTS: dict[str, Callable[[], None]] = {
-    "test_catastrophic_rule": test_catastrophic_rule,
-    "test_xshot_role": test_xshot_role,
-    "test_protection": test_protection,
-    "test_xshot_macho": test_xshot_macho,
-    "test_tracker_roleblocker": test_tracker_roleblocker,
-    "test_juggernaut": test_juggernaut,
-    "test_investigative_fail": test_investigative_fail,
-    "test_ascetic": test_ascetic,
-    "test_detective": test_detective,
-    "test_jack_of_all_trades": test_jack_of_all_trades,
-    "test_hider": test_hider,
-    "test_traffic_analyst": test_traffic_analyst,
-    "test_universal_backup": test_universal_backup,
-    "test_activated": test_activated,
-    "test_ninja": test_ninja,
-    "test_personal": test_personal,
-    "test_combine": test_combine,
-    "test_api_v1": test_api_v1,
-    "test_voting": test_voting
+    "catastrophic_rule": test_catastrophic_rule,
+    "xshot_role": test_xshot_role,
+    "protection": test_protection,
+    "xshot_macho": test_xshot_macho,
+    "tracker_roleblocker": test_tracker_roleblocker,
+    "juggernaut": test_juggernaut,
+    "investigative_fail": test_investigative_fail,
+    "ascetic": test_ascetic,
+    "detective": test_detective,
+    "jack_of_all_trades": test_jack_of_all_trades,
+    "hider": test_hider,
+    "traffic_analyst": test_traffic_analyst,
+    "universal_backup": test_universal_backup,
+    "activated": test_activated,
+    "ninja": test_ninja,
+    "personal": test_personal,
+    "combine": test_combine,
+    "api_v1": test_api_v1,
+    "voting": test_voting
 }
 
 def main() -> int:
@@ -883,26 +883,26 @@ def main() -> int:
     successes: int = 0
     failed_tests: list[str] = []
     DIR = Path(__file__).parent
-    makedirs(DIR / "test_results", exist_ok=True)
+    makedirs(DIR / "results", exist_ok=True)
     for test_name, test_func in TESTS.items():
         if verbose:
             print(f"## TESTING: {test_name}() ##")
         try:
-            with open(DIR / "test_results" / f"{test_name}.log", "w") as f:
+            with open(DIR / "results" / f"{test_name}.log", "w") as f:
                 with redirect_stdout(f):
                     test_func()
         except Exception as e:
             if verbose:
-                with open(DIR / "test_results" / f"{test_name}.log", "r") as f:
+                with open(DIR / "results" / f"{test_name}.log", "r") as f:
                     print(f.read())
                 print_exception(e)
-            with open(DIR / "test_results" / f"{test_name}.log", "a") as f:
+            with open(DIR / "results" / f"{test_name}.log", "a") as f:
                 print_exception(e, file=f)
             print(f"## TEST {test_name} FAILED ##")
             failed_tests.append(test_name)
         else:
             if verbose:
-                with open(DIR / "test_results" / f"{test_name}.log", "r") as f:
+                with open(DIR / "results" / f"{test_name}.log", "r") as f:
                     print(f.read())
             print(f"## TEST {test_name} PASSED ##")
             successes += 1
