@@ -1,4 +1,4 @@
-test_results/
+tests/**.log
 
 .replit
 uv.lock
