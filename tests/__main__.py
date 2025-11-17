@@ -1,4 +1,8 @@
-from sys import stdout
+from sys import stdout, path
+from pathlib import Path
+
+path.append(str(Path(__file__).parent.parent))
+
 from typing import Callable
 from pprint import pprint
 from mafia import core

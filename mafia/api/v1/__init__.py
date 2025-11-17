@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Callable
+from typing import Callable
 import random
 
 from flask import Blueprint, request
