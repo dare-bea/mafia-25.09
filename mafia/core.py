@@ -693,9 +693,11 @@ class Chat(list[ChatMessage]):
         """Get all players with write permissions for the chat."""
         return filter(lambda p: self.has_write_perms(game, p), game.players)
 
-    def send(self, sender: Player | str, content: str) -> None:
+    def send(
+        self, *args: Any, type: type[ChatMessage] = ChatMessage, **kwargs: Any
+    ) -> None:
         """Send a message to the chat."""
-        self.append(ChatMessage(sender, content))
+        self.append(type(*args, **kwargs))
 
 
 class PrivateChat(Chat):

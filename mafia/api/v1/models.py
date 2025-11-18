@@ -261,7 +261,7 @@ class ChatQueryModel(BaseModel):
 
 class ChatMessageModel(BaseModel):
     author: str
-    timestamp: datetime
+    timestamp: datetime | None
     content: str
 
 

@@ -2,13 +2,12 @@
 
 import random
 from collections.abc import Callable
-from datetime import UTC, datetime
 
 from flask import Blueprint, request
 from flask_pydantic import validate  # type: ignore[import-untyped]
 
 from mafia import core, normal
-from mafia.api.core import Game, game_count, games, get_permissions, resolver
+from mafia.api.core import ChatMessage, Game, game_count, games, get_permissions, resolver
 
 from . import models
 
@@ -178,12 +177,12 @@ def handle_patch_action(game: Game, action: models.GamePatchAction) -> None:
     match action:
         case models.GamePatchAction.DEQUEUE:
             for v in game.queued_visits:
-                if v.is_active_time(game):
+                if v.is_active_time(game) and v.ability.check(game, v.actor, v.targets):
                     game.visits.append(v)
             game.queued_visits.clear()
         case models.GamePatchAction.RESOLVE:
             for v in game.queued_visits:
-                if v.is_active_time(game):
+                if v.is_active_time(game) and v.ability.check(game, v.actor, v.targets):
                     game.visits.append(v)
             game.queued_visits.clear()
             resolver.resolve_game(game)
@@ -603,7 +602,7 @@ def game_player_messages(
         messages=[
             models.ChatMessageModel(
                 author=str(msg.sender),
-                timestamp=datetime.now(tz=UTC),
+                timestamp=getattr(msg, "timestamp", None),
                 content=msg.content,
             )
             for idx, msg in enumerate(player.private_messages[start : start + limit])
@@ -636,6 +635,7 @@ def game_player_send_message(
     player.private_messages.send(
         player_auth.name if player_auth is not None else "Moderator",
         body.content,
+        type=ChatMessage,
     )
     return "", 204
 
@@ -691,7 +691,7 @@ def game_chat_messages(
         messages=[
             models.ChatMessageModel(
                 author=str(msg.sender),
-                timestamp=datetime.now(UTC),
+                timestamp=getattr(msg, "timestamp", None),
                 content=msg.content,
             )
             for idx, msg in enumerate(chat[start : start + limit])
@@ -723,7 +723,11 @@ def game_chat_send_message(
         return {
             "message": "Not the moderator or player authorized to write to this chat",
         }, 403
-    chat.send(player.name if player is not None else "Moderator", body.content)
+    chat.send(
+        player.name if player is not None else "Moderator",
+        body.content,
+        type=ChatMessage,
+    )
     return "", 204
 
 

@@ -22,6 +22,7 @@ from mafia.normal import LoggingResolver
 logger = getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 def test_catastrophic_rule() -> None:
     r = LoggingResolver(logger)
 

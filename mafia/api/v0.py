@@ -15,7 +15,7 @@ from flask import Blueprint, request
 from markupsafe import Markup, escape
 
 from mafia import core, normal
-from mafia.api.core import Game, game_count, games, get_permissions, resolver
+from mafia.api.core import ChatMessage, Game, game_count, games, get_permissions, resolver
 
 # HELPER FUNCTIONS #
 
@@ -186,7 +186,7 @@ def api_v0_create_game() -> Any:
         game = Game(body["start_day"], phase, mod_token=body["mod_token"])
     else:
         game = Game(body["start_day"], phase)
-    game.chats["global"].send("System", "Welcome to the game!")
+    game.chats["global"].send("System", "Welcome to the game!", type=ChatMessage)
     for player_name, (role, alignment) in zip(body["players"], role_list, strict=False):
         game.add_player(core.Player(player_name, role, alignment))
 
@@ -809,8 +809,8 @@ def api_v0_get_messages(game_id: int, name: str) -> Any:
         return {"message": "Not the moderator"}, 403
     if not is_mod and auth_player is not player:
         return {"message": "Not your player"}, 403
-    start = request.args.get("start", 0)
-    limit = request.args.get("limit", 25)
+    start = request.args.get("start", 0, type=int)
+    limit = request.args.get("limit", 25, type=int)
     if not isinstance(start, int):
         return {"message": "'start' field is not an integer"}, 400
     if not isinstance(limit, int):
@@ -871,6 +871,7 @@ def api_v0_send_message(game_id: int, name: str) -> Any:
     player.private_messages.send(
         auth_player.name if auth_player is not None else "Moderator",
         body["content"],
+        type=ChatMessage,
     )
     return "", 204
 
@@ -1008,5 +1009,9 @@ def api_v0_send_chat_message(game_id: int, chat_id: str) -> Any:
         return {"message": "Missing 'content' field"}, 400
     if not isinstance(body["content"], str):
         return {"message": "'content' field is not a string"}, 400
-    chat.send(player.name if player is not None else "Moderator", body["content"])
+    chat.send(
+        player.name if player is not None else "Moderator",
+        body["content"],
+        type=ChatMessage,
+    )
     return "", 204

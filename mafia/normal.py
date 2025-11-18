@@ -2398,6 +2398,7 @@ class Personal_v2(AbilityModifier):
             },
         )
 
+
 # ALIGNMENTS #
 
 

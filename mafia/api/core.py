@@ -4,12 +4,15 @@ Includes a 'database' of sorts and authorization functions.
 Also includes a derived Game class that adds extra fields for API use.
 """
 
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from itertools import count
 from secrets import token_urlsafe
 from typing import Any
 
 from werkzeug.datastructures import Headers
 
+from mafia.core import ChatMessage as BaseChatMessage
 from mafia.core import Player, Visit
 from mafia.normal import Game as BaseGame
 from mafia.normal import Resolver
@@ -29,6 +32,13 @@ class Game(BaseGame):
         result = super().advance_phase()
         self.queued_visits.clear()
         return result
+
+
+@dataclass(frozen=True, eq=True)
+class ChatMessage(BaseChatMessage):
+    """A message in a chat with a timestamp."""
+
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 resolver = Resolver()

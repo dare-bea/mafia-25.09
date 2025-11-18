@@ -9,6 +9,7 @@ from __init__ import TESTS, logger  # type: ignore[import-not-found]
 
 logger.addHandler(logging.StreamHandler(stderr))
 
+
 def main() -> int:
     verbose = "--verbose" in argv or "-v" in argv
     mypy_abort_if_error = "--mypy-abort" in argv or "-ma" in argv
