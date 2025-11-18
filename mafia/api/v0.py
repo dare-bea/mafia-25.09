@@ -1,33 +1,37 @@
-"""
-API v0. Use API v1 instead for new projects, but this API will remain in case
-I didn't transfer over something from v0 to v1.
+"""API v0.
+
+Use API v1 instead, but this API will remain in case I didn't transfer over something.
+It might be removed in the future.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
-import re
 import random
+import re
+from collections.abc import Callable
 from typing import Any
 
 from flask import Blueprint, request
-from markupsafe import escape, Markup
+from markupsafe import Markup, escape
 
-from mafia import core
-from mafia import normal
-from mafia.api.core import Game, resolver, get_permissions, games, game_count
+from mafia import core, normal
+from mafia.api.core import Game, game_count, games, get_permissions, resolver
 
 # HELPER FUNCTIONS #
 
+
 def slugify(obj: object) -> str:
+    """Convert spaces to dashes."""
     return re.sub(r"\s", "-", str(obj))
 
 
 def role(player: core.Player) -> Markup:
-    return Markup(
+    """Get the role name of a player as HTML."""
+    return Markup(  # noqa: S704  # Markup is safe
         f'<span class="role_name Alignment-{slugify(escape(player.alignment))}">'
         f"{escape(player.role_name)}</span>",
     )
+
 
 # API V0 ENDPOINTS #
 
@@ -36,8 +40,7 @@ api_bp = Blueprint("api_v0", __name__, url_prefix="/api/v0")
 
 @api_bp.get("/games")
 def api_v0_games() -> Any:
-    """
-    Get a list of games.
+    """Get a list of games.
 
     Authorization: None
 
@@ -54,13 +57,13 @@ def api_v0_games() -> Any:
     return {
         "games": [
             {
-                "id": id,
+                "id": gid,
                 "players": [player.name for player in game.players],
                 "phase": game.phase.name,
                 "day_no": game.day_no,
             }
-            for id, game in games.items()
-        ]
+            for gid, game in games.items()
+        ],
     }
 
 
@@ -124,13 +127,17 @@ def api_v0_create_game() -> Any:
         return {"message": "'roles' field contains non-object values"}, 400
     if not all("role" in role and "alignment" in role for role in body["roles"]):
         return {
-            "message": "'roles' field contains objects missing 'role' or 'alignment' fields"
+            "message": "'roles' field contains objects missing "
+            "'role' or 'alignment' fields",
         }, 400
     if not all(isinstance(role["role"], str) for role in body["roles"]):
-        return {"message": "'roles' field contains objects with non-string 'role' fields"}, 400
+        return {
+            "message": "'roles' field contains objects with non-string 'role' fields",
+        }, 400
     if not all(isinstance(role["alignment"], str) for role in body["roles"]):
         return {
-            "message": "'roles' field contains objects with non-string 'alignment' fields"
+            "message": "'roles' field contains "
+            "objects with non-string 'alignment' fields",
         }, 400
 
     # Field value validation
@@ -143,7 +150,8 @@ def api_v0_create_game() -> Any:
             phase = core.Phase[body["start_phase"]]
         except KeyError:
             return {
-                "message": f"'start_phase' field is not a valid phase: {body['start_phase']}"
+                "message": "'start_phase' field is not a valid phase: "
+                f"{body['start_phase']}",
             }, 400
 
     # Create game
@@ -179,16 +187,16 @@ def api_v0_create_game() -> Any:
     else:
         game = Game(body["start_day"], phase)
     game.chats["global"].send("System", "Welcome to the game!")
-    for player_name, (role, alignment) in zip(body["players"], role_list):
+    for player_name, (role, alignment) in zip(body["players"], role_list, strict=False):
         game.add_player(core.Player(player_name, role, alignment))
 
-    id = next(game_count)
-    games[id] = game
-    return {"game_id": id, "mod_token": game.mod_token}, 201
+    gid = next(game_count)
+    games[gid] = game
+    return {"game_id": gid, "mod_token": game.mod_token}, 201
 
 
-@api_bp.get("/games/<int:id>")
-def api_v0_get_game(id: int) -> Any:
+@api_bp.get("/games/<int:gid>")
+def api_v0_get_game(gid: int) -> Any:
     """Get game overview.
 
     Authorization: None (Moderators/Players get extra information)
@@ -211,11 +219,10 @@ def api_v0_get_game(id: int) -> Any:
     * 200 OK
     * 404 Not Found
     """
-
-    if id not in games:
+    if gid not in games:
         return {"message": "Game not found"}, 404
 
-    game = games[id]
+    game = games[gid]
 
     """Headers:
     * Authorization-Player-Name
@@ -225,7 +232,7 @@ def api_v0_get_game(id: int) -> Any:
     is_mod = mod_token == game.mod_token
 
     return {
-        "game_id": id,
+        "game_id": gid,
         "day_no": game.day_no,
         "phase": game.phase.name,
         "players": [
@@ -245,17 +252,17 @@ def api_v0_get_game(id: int) -> Any:
         ],
         "chats": [
             {
-                "id": id,
+                "id": gid,
                 "message_count": len(chat),
             }
-            for id, chat in game.chats.items()
+            for gid, chat in game.chats.items()
             if chat.has_read_perms(game, player)
         ],
     }
 
 
-@api_bp.put("/games/<int:id>")
-def api_v0_update_game(id: int) -> Any:
+@api_bp.put("/games/<int:gid>")
+def api_v0_update_game(gid: int) -> Any:
     """Update game data.
 
     Authorization: Moderator
@@ -272,10 +279,10 @@ def api_v0_update_game(id: int) -> Any:
     * 404 Not Found
     * 415 Unsupported Media Type
     """
-    if id not in games:
+    if gid not in games:
         return {"message": "Game not found"}, 404
 
-    game = games[id]
+    game = games[gid]
     mod_token, player = get_permissions(game, request.headers)
     if mod_token is None and player is None:
         return {"message": "Not authenticated"}, 401
@@ -300,7 +307,8 @@ def api_v0_update_game(id: int) -> Any:
             phase = core.Phase[body["start_phase"]]
         except KeyError:
             return {
-                "message": f"'start_phase' field is not a valid phase: {body['start_phase']}"
+                "message": "'start_phase' field is not a valid phase: "
+                f"{body['start_phase']}",
             }, 400
 
     game.day_no = body["day_no"]
@@ -308,8 +316,8 @@ def api_v0_update_game(id: int) -> Any:
     return "", 204
 
 
-@api_bp.patch("/games/<int:id>")
-def api_v0_patch_game(id: int) -> Any:
+@api_bp.patch("/games/<int:gid>")
+def api_v0_patch_game(gid: int) -> Any:
     """Update game data.
 
     Authorization: Moderator
@@ -320,10 +328,9 @@ def api_v0_patch_game(id: int) -> Any:
         * `"resolve"` - Resolve the game.
         * `"next_phase"` - Will advance game phase/day.
     """
-
-    if id not in games:
+    if gid not in games:
         return {"message": "Game not found"}, 404
-    game = games[id]
+    game = games[gid]
     mod_token, player = get_permissions(game, request.headers)
     if mod_token is None and player is None:
         return {"message": "Not authenticated"}, 401
@@ -355,7 +362,8 @@ def api_v0_patch_game(id: int) -> Any:
 def api_v0_get_players(game_id: int) -> Any:
     """Get an array of players.
 
-    Returns `"players"` field from using `GET /games/{game_id}`."""
+    Returns `"players"` field from using `GET /games/{game_id}`.
+    """
     if game_id not in games:
         return {"message": "Game not found"}, 404
 
@@ -397,7 +405,6 @@ def api_v0_get_player(game_id: int, name: str) -> Any:
     * 403 Forbidden
     * 404 Not Found
     """
-
     if game_id not in games:
         return {"message": "Game not found"}, 404
 
@@ -485,7 +492,6 @@ def api_v0_get_abilities(game_id: int, name: str) -> Any:
     * 403 Forbidden
     * 404 Not Found
     """
-
     if game_id not in games:
         return {"message": "Game not found"}, 404
     game = games[game_id]
@@ -532,7 +538,9 @@ def api_v0_get_abilities(game_id: int, name: str) -> Any:
             {
                 "id": a.id,
                 "used_by": visit.actor.name
-                if (visit := next((v for v in game.queued_visits if v.ability is a), None))
+                if (
+                    visit := next((v for v in game.queued_visits if v.ability is a), None)
+                )
                 is not None
                 else None,
                 "phase": a.phase.name if a.phase is not None else None,
@@ -544,7 +552,12 @@ def api_v0_get_abilities(game_id: int, name: str) -> Any:
                 if a.target_count > 0
                 else [],
                 "queued": [t.name for t in v]
-                if (v := next((v.targets for v in game.queued_visits if v.ability == a), None))
+                if (
+                    v := next(
+                        (v.targets for v in game.queued_visits if v.ability == a),
+                        None,
+                    )
+                )
                 is not None
                 else None,
             }
@@ -580,8 +593,8 @@ def api_v0_queue_ability(game_id: int, name: str) -> Any:
     * 401 Unauthorized
     * 403 Forbidden
     * 404 Not Found
-    * 415 Unsupported Media Type"""
-
+    * 415 Unsupported Media Type
+    """
     if game_id not in games:
         return {"message": "Game not found"}, 404
     game = games[game_id]
@@ -612,11 +625,18 @@ def api_v0_queue_ability(game_id: int, name: str) -> Any:
     for action_id, target_list in body["actions"].items():
         ability = next((a for a in player.actions if a.id == action_id), None)
         if ability is None:
-            return {"message": f"'actions[{action_id!r}]' field contains invalid action id"}, 400
+            return {
+                "message": f"'actions[{action_id!r}]' field contains invalid action id",
+            }, 400
         if target_list is None:
             # Remove action from queue
             prev_visit = next(
-                (v for v in game.queued_visits if v.actor is player and v.ability is ability), None
+                (
+                    v
+                    for v in game.queued_visits
+                    if v.actor is player and v.ability is ability
+                ),
+                None,
             )
             if prev_visit is not None:
                 game.queued_visits.remove(prev_visit)
@@ -624,22 +644,27 @@ def api_v0_queue_ability(game_id: int, name: str) -> Any:
         if not isinstance(target_list, list):
             return {"message": f"'actions[{action_id!r}]' field is not a list"}, 400
         if not all(isinstance(target, str) for target in target_list):
-            return {"message": f"'actions[{action_id!r}]' field contains non-string values"}, 400
+            return {
+                "message": f"'actions[{action_id!r}]' field contains non-string values",
+            }, 400
         targets = []
         for target_name in target_list:
             target = next((p for p in game.players if p.name == target_name), None)
             if target is None:
                 return {
-                    "message": f"'actions[{action_id!r}]' field contains invalid player name: {target_name}"
+                    "message": f"'actions[{action_id!r}]' field contains invalid "
+                    f"player name: {target_name}",
                 }, 400
             targets.append(target)
         if ability.phase is not None and ability.phase != game.phase:
             return {
-                "message": f"'actions[{action_id!r}]' field contains action with non-current phase"
+                "message": f"'actions[{action_id!r}]' field contains action with "
+                "non-current phase",
             }, 400
         if not ability.check(game, player, targets):
             return {
-                "message": f"'actions[{action_id!r}]' field contains failed check with targets {target_list!r}"
+                "message": f"'actions[{action_id!r}]' field contains failed check"
+                f"with targets {target_list!r}",
             }, 400
         if ability.immediate:
             ability.perform(
@@ -656,7 +681,8 @@ def api_v0_queue_ability(game_id: int, name: str) -> Any:
             )
             continue
         prev_visit = next(
-            (v for v in game.queued_visits if v.actor is player and v.ability is ability), None
+            (v for v in game.queued_visits if v.actor is player and v.ability is ability),
+            None,
         )
         if prev_visit is not None:
             game.queued_visits.remove(prev_visit)
@@ -667,13 +693,14 @@ def api_v0_queue_ability(game_id: int, name: str) -> Any:
                 ability=ability,
                 ability_type=core.AbilityType.ACTION,
                 game=game,
-            )
+            ),
         )
     for action_id, target_list in body["shared_actions"].items():
         ability = next((a for a in player.shared_actions if a.id == action_id), None)
         if ability is None:
             return {
-                "message": f"'shared_actions[{action_id!r}]' field contains invalid action id"
+                "message": f"'shared_actions[{action_id!r}]' field contains "
+                "invalid action id",
             }, 400
         if target_list is None:
             # Remove action from queue
@@ -685,26 +712,32 @@ def api_v0_queue_ability(game_id: int, name: str) -> Any:
                 game.queued_visits.remove(prev_visit)
             continue
         if not isinstance(target_list, list):
-            return {"message": f"'shared_actions[{action_id!r}]' field is not a list"}, 400
+            return {
+                "message": f"'shared_actions[{action_id!r}]' field is not a list",
+            }, 400
         if not all(isinstance(target, str) for target in target_list):
             return {
-                "message": f"'shared_actions[{action_id!r}]' field contains non-string values"
+                "message": f"'shared_actions[{action_id!r}]' field contains "
+                "non-string values",
             }, 400
         targets = []
         for target_name in target_list:
             target = next((p for p in game.players if p.name == target_name), None)
             if target is None:
                 return {
-                    "message": f"'shared_actions[{action_id!r}]' field contains invalid player name: {target_name}"
+                    "message": f"'shared_actions[{action_id!r}]' field contains "
+                    f"invalid player name: {target_name}",
                 }, 400
             targets.append(target)
         if ability.phase is not None and ability.phase != game.phase:
             return {
-                "message": f"'shared_actions[{action_id!r}]' field contains action with non-current phase"
+                "message": f"'shared_actions[{action_id!r}]' field contains "
+                "action with non-current phase",
             }, 400
         if not ability.check(game, player, targets):
             return {
-                "message": f"'shared_actions[{action_id!r}]' field contains failed check with targets {target_list!r}"
+                "message": f"'shared_actions[{action_id!r}]' field contains "
+                "failed check with targets {target_list!r}",
             }, 400
         if ability.immediate:
             ability.perform(
@@ -733,7 +766,7 @@ def api_v0_queue_ability(game_id: int, name: str) -> Any:
                 ability=ability,
                 ability_type=core.AbilityType.SHARED_ACTION,
                 game=game,
-            )
+            ),
         )
     return "", 204
 
@@ -759,7 +792,9 @@ def api_v0_get_messages(game_id: int, name: str) -> Any:
     * 200 OK
     * 401 Unauthorized
     * 403 Forbidden
-    * 404 Not Found &mdash; unlike with private chats, all players have private messages, even if they don't use it, so we do not return 404 if unauthorized."""
+    * 404 Not Found &mdash; unlike with private chats, all players have private messages,
+    even if they don't use it, so we do not return 404 if unauthorized.
+    """
     if game_id not in games:
         return {"message": "Game not found"}, 404
     game = games[game_id]
@@ -834,8 +869,10 @@ def api_v0_send_message(game_id: int, name: str) -> Any:
     if not isinstance(body["content"], str):
         return {"message": "'content' field is not a string"}, 400
     player.private_messages.send(
-        auth_player.name if auth_player is not None else "Moderator", body["content"]
+        auth_player.name if auth_player is not None else "Moderator",
+        body["content"],
     )
+    return "", 204
 
 
 @api_bp.get("/games/<int:game_id>/chats")
@@ -863,7 +900,8 @@ def api_v0_get_chat(game_id: int, chat_id: str) -> Any:
 
     Status Codes:
     * 200 OK
-    * 404 Not Found &mdash; Returned in place of 401 or 403 for those without read permissions.
+    * 404 Not Found &mdash; Returned in place of 401 or 403
+      for those without read permissions.
     """
     if game_id not in games:
         return {"message": "Game not found"}, 404
@@ -903,7 +941,8 @@ def api_v0_get_chat_messages(game_id: int, chat_id: str) -> Any:
 
     Status Codes:
     * 200 OK
-    * 404 Not Found &mdash; Returned in place of 401 or 403 for those without read permissions.
+    * 404 Not Found &mdash; Returned in place of 401 or 403
+      for those without read permissions.
     """
     if game_id not in games:
         return {"message": "Game not found"}, 404
@@ -946,10 +985,10 @@ def api_v0_send_chat_message(game_id: int, chat_id: str) -> Any:
     * 400 Bad Request
     * 401 Unauthorized
     * 403 Forbidden
-    * 404 Not Found &mdash; Returned in place of 401 or 403 for those without read permissions.
+    * 404 Not Found &mdash; Returned in place of 401 or 403
+      for those without read permissions.
     * 415 Unsupported Media Type
     """
-
     if game_id not in games:
         return {"message": "Game not found"}, 404
     game = games[game_id]

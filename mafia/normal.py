@@ -1,75 +1,89 @@
-"""
-Normal roles, abilities, and alignments.
-"""
+"""Normal roles, abilities, and alignments."""
 
+import contextlib
+import logging
 from abc import ABC, abstractmethod
-from collections.abc import Sequence, Callable, Collection
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import replace
 from typing import Any, TypeVar, get_args, get_origin, get_type_hints
 
+from mafia import core
 from mafia.core import (
+    Ability,
     AbilityModifier,
     AbilityType,
     Alignment,
     Chat,
-    PrivateChat,
     Faction,
     Modifier,
-    Role,
-    Ability,
     Player,
+    PrivateChat,
+    Role,
     Visit,
     VisitStatus,
     WinResult,
 )
-import mafia.core as core
-from .nodes import nodes_in_cycles
+
+from ._nodes import nodes_in_cycles
 
 
 class Game(core.Game):
+    """A game with a global chat and voting messages."""
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize the game."""
         super().__init__(*args, **kwargs)
         self.chats["global"] = Chat()
-    
+
     def vote(self, player: Player, target: Player | None) -> None:
+        """Vote for a player to be eliminated."""
         super().vote(player, target)
         if target is not None:
-            self.chats["global"].send(
-                "Vote", f"{player.name} voted for {target.name}."
-            )
+            self.chats["global"].send("Vote", f"{player.name} voted for {target.name}.")
         else:
             self.chats["global"].send(
-                "Vote", f"{player.name} voted to not eliminate anyone."
+                "Vote",
+                f"{player.name} voted to not eliminate anyone.",
             )
 
     def unvote(self, player: Player) -> None:
+        """Unvote a player."""
         super().unvote(player)
         self.chats["global"].send("Unvote", f"{player.name} unvoted.")
 
     def vote_count(self) -> str:
+        """Return a string containing the vote count data."""
         message = ""
         for p in self.players:
             voters = tuple(self.get_voters(p))
             if voters:
-                message += f"{p.name} ({len(voters)}): {', '.join(v.name for v in voters)}\n"
+                message += (
+                    f"{p.name} ({len(voters)}): {', '.join(v.name for v in voters)}\n"
+                )
         no_elimers = tuple(self.get_voters(None))
         if no_elimers:
-            message += f"No Elimination ({len(no_elimers)}): {', '.join(v.name for v in no_elimers)}\n\n"
+            message += (
+                f"No Elimination ({len(no_elimers)}): "
+                f"{', '.join(v.name for v in no_elimers)}\n\n"
+            )
 
-        non_voters = tuple(
-            p.name for p in self.alive_players
-            if p not in self.votes
-        )
+        non_voters = tuple(p.name for p in self.alive_players if p not in self.votes)
         if non_voters:
             message += f"Not Voting ({len(non_voters)}): {', '.join(non_voters)}\n"
 
         return message.rstrip("\n")
 
     def post_vote_count(self, chat_id: str) -> None:
+        """Post the vote count to a chat."""
         self.chats[chat_id].send("Vote Count", self.vote_count().rstrip("\n"))
 
-def roleblock_player(game: core.Game, player: Player, visit: Visit | None = None) -> VisitStatus:
-    """Roleblocks a player."""
+
+def roleblock_player(
+    game: core.Game,
+    player: Player,
+    visit: Visit | None = None,
+) -> VisitStatus:
+    """Roleblock a player."""
     success = VisitStatus.FAILURE
     for v in player.get_visits(game):
         if visit is not None and not Personal.can_interact(visit, v):
@@ -82,6 +96,7 @@ def roleblock_player(game: core.Game, player: Player, visit: Visit | None = None
 
 
 def visit_is_visible(visit: Visit, game: core.Game) -> bool:
+    """Check if a visit is visible by action-investigative roles."""
     return (
         visit.ability_type is not AbilityType.PASSIVE
         and "hidden" not in visit.tags
@@ -97,6 +112,7 @@ class Resolver:
     lazy_allowed: bool = True
 
     def do_visit(self, game: core.Game, visit: Visit) -> int:
+        """Perform a visit and return the resulting status."""
         status = visit.perform(game)
         visit.status = status
         if visit.ability_type is AbilityType.PASSIVE and status != VisitStatus.PENDING:
@@ -104,8 +120,11 @@ class Resolver:
             visit.actor.uses[visit.ability] += status
         return status
 
-    def resolve_visit(self, game: core.Game, visit: Visit) -> int:
-        """Resolve a visit and return the result. If the visit cannot be resolved, return VisitStatus.PENDING."""
+    def resolve_visit(self, game: core.Game, visit: Visit) -> int:  # noqa: PLR0911
+        """Resolve a visit and return the result.
+
+        If the visit cannot be resolved, return VisitStatus.PENDING.
+        """
         # Prevent if the visit is lazy and lazy is not allowed.
         if "lazy" in visit.tags and not self.lazy_allowed:
             visit.status = VisitStatus.FAILURE
@@ -126,7 +145,9 @@ class Resolver:
             return self.do_visit(game, visit)
         # Wait if the actor has a pending roleblock.
         if visit.ability_type is not AbilityType.PASSIVE and any(
-            "roleblock" in v.tags for v in visit.actor.get_visitors(game) if v.is_active(game)
+            "roleblock" in v.tags
+            for v in visit.actor.get_visitors(game)
+            if v.is_active(game)
         ):
             return VisitStatus.PENDING
         # Wait if the target has a pending rolestop.
@@ -148,39 +169,48 @@ class Resolver:
         # Perform the visit.
         return self.do_visit(game, visit)
 
-    def resolve_game(self, game: core.Game) -> None:
-        """Resolve all visits in the game."""
+    def log_visits(self, game: core.Game) -> None:
+        """Log all active visits in the game to players."""
         for visit in game.visits:
             if visit.ability_type is not AbilityType.PASSIVE and visit.is_active(game):
                 visit.actor.uses.setdefault(visit.ability, 0)
                 visit.actor.uses[visit.ability] += 1
                 visit.actor.action_history.append(replace(visit))
+
+    def attempt_resolve(self, game: core.Game) -> bool:
+        failed_to_resolve: bool = False
+        successfully_resolved: bool = False
+        for visit in sorted(
+            game.visits,
+            key=lambda v: (
+                "simultaneous" in v.tags,  # Prioritize simultaneous visits.
+                "unstoppable" in v.tags,  # Prioritize unstoppable visits.
+            ),
+            reverse=True,
+        ):
+            if not visit.is_active(game):
+                continue
+            result = self.resolve_visit(game, visit)
+            if result == VisitStatus.PENDING:
+                failed_to_resolve = True
+            else:
+                successfully_resolved = True
+        if failed_to_resolve and not successfully_resolved:
+            successfully_resolved = self.resolve_cycles(game)
+            if not successfully_resolved:
+                message = "Failed to resolve game."
+                raise RuntimeError(message)
+        return failed_to_resolve
+
+    def resolve_game(self, game: core.Game) -> None:
+        """Resolve all visits in the game."""
+        self.log_visits(game)
         for visit in game.visits:
             if visit.ability.immediate:
                 self.resolve_visit(game, visit)
         failed_to_resolve: bool = True
         while failed_to_resolve:
-            failed_to_resolve = False
-            successfully_resolved: bool = False
-            for visit in sorted(
-                game.visits,
-                key=lambda v: (
-                    "simultaneous" in v.tags,  # Prioritize simultaneous visits.
-                    "unstoppable" in v.tags,  # Prioritize unstoppable visits.
-                ),
-                reverse=True,
-            ):
-                if not visit.is_active(game):
-                    continue
-                result = self.resolve_visit(game, visit)
-                if result == VisitStatus.PENDING:
-                    failed_to_resolve = True
-                else:
-                    successfully_resolved = True
-            if failed_to_resolve and not successfully_resolved:
-                successfully_resolved = self.resolve_cycles(game)
-                if not successfully_resolved:
-                    raise RuntimeError("Failed to resolve game.")
+            failed_to_resolve = self.attempt_resolve(game)
         for visit in game.visits:
             if (
                 "investigate" in visit.tags
@@ -188,10 +218,12 @@ class Resolver:
                 and visit.status == VisitStatus.FAILURE
             ):
                 visit.actor.private_messages.send(
-                    visit.ability.id, "Your ability failed, and you did not recieve a result."
+                    visit.ability.id,
+                    "Your ability failed, and you did not recieve a result.",
                 )
 
     def resolve_cycles(self, game: core.Game) -> bool:
+        """Resolve cycles in the game."""
         successfully_resolved: bool = False
 
         # Check for mutual roleblocks and invoke the Catastrophic Rule.
@@ -207,18 +239,22 @@ class Resolver:
         return successfully_resolved
 
     def add_passives(self, game: core.Game) -> None:
+        """Add players' passive abilities to the game."""
         for player in game.players:
             for ability in player.passives:
                 if ability.check(game, player):
                     visit = Visit(
-                        actor=player, ability=ability, ability_type=AbilityType.PASSIVE, game=game
+                        actor=player,
+                        ability=ability,
+                        ability_type=AbilityType.PASSIVE,
+                        game=game,
                     )
                     if ability.immediate:
                         self.resolve_visit(game, visit)
                     else:
                         game.visits.append(visit)
 
-    def make_visit(
+    def make_visit(  # noqa: PLR0913
         self,
         game: core.Game,
         actor: Player,
@@ -229,6 +265,10 @@ class Resolver:
         *,
         player_inputs: tuple[object, ...] = (),
     ) -> Visit:
+        """Make a visit and add it to the game.
+
+        Uses the actor's ability at the given index and ability type's list.
+        """
         ability = (
             actor.actions[ability_idx]
             if ability_type is AbilityType.ACTION
@@ -240,9 +280,10 @@ class Resolver:
         )
         if ability is None:
             if not isinstance(ability_type, AbilityType):
-                raise TypeError(f"Expected AbilityType, got {type(ability_type)}.")
-            else:
-                raise ValueError(f"Unsupported value {ability_type}.")
+                message = f"Expected AbilityType, got {type(ability_type)}."
+                raise TypeError(message)
+            message = f"Unsupported value {ability_type}."
+            raise ValueError(message)
         return Visit(
             actor,
             targets,  # type: ignore[arg-type]
@@ -254,28 +295,41 @@ class Resolver:
         )
 
     def check_lazy_allowed(self, game: core.Game) -> bool:
-        self.lazy_allowed = sum(bool("town" not in p.alignment.tags) for p in game.players) > 1
+        """Check if lazy abilities are allowed.
+
+        Returns True if there is more than one non-Town player.
+        """
+        self.lazy_allowed = (
+            sum(bool("town" not in p.alignment.tags) for p in game.players) > 1
+        )
         return self.lazy_allowed
 
     def vote_ongoing(self, game: core.Game) -> bool:
+        """Check if a vote is ongoing."""
         if not game.is_voting_phase():
             return False
         elim = self.vote_elimination(game)
         if elim is not None:
             return False
-        if game.get_votes(None) >= len(game.players) // 2:
-            return False
-        return True
+        return game.get_votes(None) < len(game.players) / 2
 
     def vote_elimination(self, game: core.Game) -> Player | None:
+        """Get the player to be eliminated by vote.
+
+        If the vote is ongoing or inactive, return None.
+        """
         if not game.is_voting_phase():
             return None
         for p in game.players:
-            if game.get_votes(p) > len(game.players) // 2:
+            if game.get_votes(p) > len(game.players) / 2:
                 return p
         return None
 
     def resolve_vote(self, game: core.Game) -> Player | None:
+        """Resolve the vote and return the eliminated player.
+
+        Kills the eliminated player and advances the game phase.
+        """
         if not game.is_voting_phase() or self.vote_ongoing(game):
             return None
         elim = self.vote_elimination(game)
@@ -284,17 +338,85 @@ class Resolver:
         game.advance_phase()
         return elim
 
+
+class LoggingResolver(Resolver):
+    """Resolver that logs the visits as they are resolved."""
+
+    def __init__(self, logger: logging.Logger | None = None):
+        self.logger = logger if logger is not None else logging.getLogger(__name__)
+
+    def resolve_visit(
+        self,
+        game: core.Game,
+        visit: core.Visit,
+        *,
+        level: int = logging.INFO,
+    ) -> int:
+        resolved_visits = {
+            v for v in game.visits if v.status is VisitStatus.PENDING and v != visit
+        }
+
+        result = super().resolve_visit(game, visit)
+
+        self.logger.log(level, visit)
+        resolved_visits -= {v for v in game.visits if v.status is VisitStatus.PENDING}
+        for v in resolved_visits:
+            self.logger.log(level, "Resolved %s", v)
+        return result
+
+    def resolve_cycles(
+        self,
+        game: core.Game,
+        *,
+        level: int = logging.INFO,
+    ) -> bool:
+        resolved_visits = {v for v in game.visits if v.status is VisitStatus.PENDING}
+        successfully_resolved = super().resolve_cycles(game)
+        resolved_visits -= {v for v in game.visits if v.status is VisitStatus.PENDING}
+        self.logger.log(level, "Cycle detected, resolving...")
+        for v in resolved_visits:
+            self.logger.log(level, "Resolved %s", v)
+        return successfully_resolved
+
+    def log_players(self, game: core.Game, *, level: int = logging.INFO) -> None:
+        for player in game.players:
+            self.logger.log(
+                level,
+                "%s: %s\n  Actions: %s\n  Passives: %s\n  Shared Actions: %s\n",
+                player,
+                player.role_name,
+                player.actions,
+                player.passives,
+                player.shared_actions,
+            )
+
+
 class Kill(Ability):
     """Kills a player."""
 
     def __init__(
-        self, id: str | None = None, killer: str | None = None, tags: frozenset[str] | None = None
+        self,
+        id: str | None = None,
+        killer: str | None = None,
+        tags: frozenset[str] | None = None,
     ):
+        """Initialize an ability.
+
+        :param id: The ID of the ability. Defaults to the class `id`.
+        :param tags: The tags of the ability.
+        :param killer: The killer of the ability. Defaults to the class `killer`.
+        """
         super().__init__(id, tags)
         if killer is not None:
             self.killer = killer
 
     def __init_subclass__(cls) -> None:
+        """Initialize a subclass.
+
+        If the subclass does not have a `id` attribute, set it to the class name.
+        If the subclass does not have a `tags` attribute, set it to the class `tags`.
+        If the subclass does not have a `killer` attribute, set it to the class name.
+        """
         super().__init_subclass__()
         if "killer" not in cls.__dict__:
             cls.killer = cls.__name__.replace("_", " ")
@@ -302,19 +424,27 @@ class Kill(Ability):
     tags = frozenset({"kill"})
     killer: str
 
-    def check(self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None) -> bool:
-        return (
-            super().check(game, actor, targets)
-            and (
-                targets is None
-                or all(t not in actor.known_players
-                       or t.alignment.id != actor.alignment.id
-                       for t in targets)
+    def check(
+        self,
+        game: core.Game,
+        actor: Player,
+        targets: Sequence[Player] | None = None,
+    ) -> bool:
+        return super().check(game, actor, targets) and (
+            targets is None
+            or all(
+                t not in actor.known_players or t.alignment.id != actor.alignment.id
+                for t in targets
             )
         )
 
     def perform(
-        self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit
+        self,
+        game: core.Game,
+        actor: Player,
+        targets: Sequence[Player] | None = None,
+        *,
+        visit: Visit,
     ) -> VisitStatus:
         if targets is None:
             targets = tuple(actor for _ in range(self.target_count))
@@ -333,7 +463,12 @@ class InvestigativeAbility(Ability, ABC):
     tags = frozenset({"investigate"})
 
     def perform(
-        self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit
+        self,
+        game: core.Game,
+        actor: Player,
+        targets: Sequence[Player] | None = None,
+        *,
+        visit: Visit,
     ) -> VisitStatus:
         if targets is None:
             targets = tuple(actor for _ in range(self.target_count))
@@ -343,7 +478,14 @@ class InvestigativeAbility(Ability, ABC):
         return VisitStatus.SUCCESS
 
     @abstractmethod
-    def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str: ...
+    def get_message(
+        self,
+        game: core.Game,
+        actor: Player,
+        target: Player,
+        *,
+        visit: Visit,
+    ) -> str: ...
 
 
 class Rolestop(Ability):
@@ -352,7 +494,12 @@ class Rolestop(Ability):
     tags = frozenset({"rolestop"})
 
     def perform(
-        self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit
+        self,
+        game: core.Game,
+        actor: Player,
+        targets: Sequence[Player] | None = None,
+        *,
+        visit: Visit,
     ) -> int:
         if targets is None:
             targets = tuple(actor for _ in range(self.target_count))
@@ -368,11 +515,14 @@ class Rolestop(Ability):
             return VisitStatus.PENDING
         max_blocks: int | None
         if visit.ability_type is AbilityType.PASSIVE and isinstance(
-            visit.ability, XShot.XShotPrototype
+            visit.ability,
+            XShot.XShotPrototype,
         ):
             uses_remaining = visit.ability.max_uses - actor.uses.get(visit.ability, 0)
             max_blocks = (
-                min(self.limit, uses_remaining) if self.limit is not None else uses_remaining
+                min(self.limit, uses_remaining)
+                if self.limit is not None
+                else uses_remaining
             )
         else:
             max_blocks = self.limit
@@ -391,13 +541,23 @@ class Rolestop(Ability):
         return successes
 
     def block_visit(
-        self, actor: Player, target: Player, blocked_visit: Visit, *, visit: Visit
+        self,
+        actor: Player,
+        target: Player,
+        blocked_visit: Visit,
+        *,
+        visit: Visit,
     ) -> VisitStatus:
         blocked_visit.status = VisitStatus.FAILURE
         return VisitStatus.SUCCESS
 
     def block_check(
-        self, actor: Player, target: Player, checked_visit: Visit, *, visit: Visit
+        self,
+        actor: Player,
+        target: Player,
+        checked_visit: Visit,
+        *,
+        visit: Visit,
     ) -> bool:
         return True
 
@@ -405,10 +565,17 @@ class Rolestop(Ability):
 
 
 class ProtectiveAbility(Rolestop):
+    """Protects a player from kills."""
+
     tags = frozenset({"protect"})
 
     def perform(
-        self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None, *, visit: Visit
+        self,
+        game: core.Game,
+        actor: Player,
+        targets: Sequence[Player] | None = None,
+        *,
+        visit: Visit,
     ) -> int:
         if targets is None:
             targets = tuple(actor for _ in range(self.target_count))
@@ -418,7 +585,12 @@ class ProtectiveAbility(Rolestop):
         return super().perform(game, actor, targets, visit=visit)
 
     def block_check(
-        self, actor: Player, target: Player, checked_visit: Visit, *, visit: Visit
+        self,
+        actor: Player,
+        target: Player,
+        checked_visit: Visit,
+        *,
+        visit: Visit,
     ) -> bool:
         return "kill" in checked_visit.tags
 
@@ -436,10 +608,18 @@ class Bodyguard(Role):
     """Protects a player from one kill, but dies if successful."""
 
     class Bodyguard(ProtectiveAbility):
-        """You may target another player to protect them from a single nightkill on that night. If you successfully protect another player, you will die in their place."""
+        """You may target another player to protect them
+        from a single nightkill on that night.
+        If you successfully protect another player, you will die in their place.
+        """
 
         def block_visit(
-            self, actor: Player, target: Player, blocked_visit: Visit, *, visit: Visit
+            self,
+            actor: Player,
+            target: Player,
+            blocked_visit: Visit,
+            *,
+            visit: Visit,
         ) -> VisitStatus:
             actor.kill(self.id)
             return super().block_visit(actor, target, blocked_visit, visit=visit)
@@ -465,15 +645,23 @@ class Cop(Role):
     """Checks if a player is aligned with the Town."""
 
     class Cop(InvestigativeAbility):
-        """You may investigate another player to learn if they are Town or Not Town. If your action fails, you will receive 'No Result.'"""
+        """You may investigate another player to learn if they are Town or Not Town.
+        If your action fails, you will receive 'No Result'.
+        """
 
         tags = frozenset({"investigate", "gun"})
 
-        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(
+            self,
+            game: core.Game,
+            actor: Player,
+            target: Player,
+            *,
+            visit: Visit,
+        ) -> str:
             if "town" in target.alignment.tags:
                 return f"{target.name} is aligned with the Town."
-            else:
-                return f"{target.name} is not aligned with the Town!."
+            return f"{target.name} is not aligned with the Town!."
 
     actions = (Cop(),)
     tags = frozenset({"gun"})
@@ -483,7 +671,9 @@ class Doctor(Role):
     """Protects a player from one kill."""
 
     class Doctor(ProtectiveAbility):
-        """You may target another player to protect them from a single nightkill on that night."""
+        """You may target another player to protect them
+        from a single nightkill on that night.
+        """
 
         tags = frozenset({"protect", "mafia_no_gun"})
         limit = 1
@@ -495,7 +685,9 @@ class Friendly_Neighbor(Role):
     """Informs a player of the actor's alignment."""
 
     class Friendly_Neighbor(Ability):
-        """You may target another player to inform them that you are aligned with the Town."""
+        """You may target another player to inform them
+        that you are aligned with the Town.
+        """
 
         tags = frozenset({"inform"})
 
@@ -522,29 +714,48 @@ class Gunsmith(Role):
 
     Mafia (except Traitors, Doctors, and Medical Students), Cops, Vigilantes, Gunsmiths,
     Role Cops, Vanilla Cops, PT Cops, Vengefuls, Modifier Cops, Detectives, Neapolitans,
-    Goon Cops, Agents, Auditors, Specialists, Backups and JoATs of the aforementioned roles,
-    Inventors that can give out the aforementioned roles, and players with inventions of the
-    aforementioned roles have guns."""
+    Goon Cops, Agents, Auditors, Specialists, Backups and JoATs
+    of the aforementioned roles, Inventors that can give out the aforementioned roles,
+    and players with inventions of the aforementioned roles have guns.
+    """
 
     class Gunsmith(InvestigativeAbility):
-        """You may investigate another player to learn whether or not they have a gun. If your action fails, you will receive 'No Result.'. You can find an overview of which roles do and do not have guns [here](https://wiki.mafiascum.net/index.php?title=Gunsmith#Normal_version)."""
+        """You may investigate another player to learn whether or not they have a gun.
+        If your action fails, you will receive 'No Result.'. You can find an overview of
+        which roles do and do not have guns
+        [here](https://wiki.mafiascum.net/index.php?title=Gunsmith#Normal_version).
+        """
 
         tags = frozenset({"investigate", "gun"})
 
-        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(
+            self,
+            game: core.Game,
+            actor: Player,
+            target: Player,
+            *,
+            visit: Visit,
+        ) -> str:
             if any(
                 "gun" in a.tags
-                for a in [*target.actions, *target.passives, *target.shared_actions]
+                for a in [
+                    *target.actions,
+                    *target.passives,
+                    *target.shared_actions,
+                ]
             ) or (
                 "mafia" in target.alignment.tags
                 and not any(
                     "mafia_no_gun" in a.tags
-                    for a in [*target.actions, *target.passives, *target.shared_actions]
+                    for a in [
+                        *target.actions,
+                        *target.passives,
+                        *target.shared_actions,
+                    ]
                 )
             ):
                 return f"{target.name} has a gun!"
-            else:
-                return f"{target.name} does not have a gun."
+            return f"{target.name} does not have a gun."
 
     actions = (Gunsmith(),)
 
@@ -559,7 +770,10 @@ class Innocent_Child(Role):
         tags = frozenset({"inform"})
 
         def check(
-            self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None
+            self,
+            game: core.Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
         ) -> bool:
             # Innocent Child can only be used once.
             return super().check(game, actor, targets) and actor.uses.get(self, 0) == 0
@@ -628,7 +842,8 @@ class Juggernaut(Role):
             target, *_ = targets
             max_upgrades: int | None = None
             if visit.ability_type is AbilityType.PASSIVE and isinstance(
-                visit.ability, XShot.XShotPrototype
+                visit.ability,
+                XShot.XShotPrototype,
             ):
                 max_upgrades = visit.ability.max_uses - actor.uses.get(visit.ability, 0)
             successes: int = 0
@@ -636,9 +851,9 @@ class Juggernaut(Role):
                 if (
                     "factional_kill" in v.tags
                     and v.is_active(game)
-                    and Personal.can_interact(
-                        visit, v
-                    )  # Personal makes Juggernaut useless but just in case it's used for some reason.
+                    and Personal.can_interact(visit, v)
+                    # Personal makes Juggernaut useless
+                    # but just in case it's used for some reason.
                 ):
                     v.tags |= frozenset({"unstoppable"})
                     successes += 1
@@ -647,13 +862,19 @@ class Juggernaut(Role):
             return successes
 
         def check(
-            self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None
+            self,
+            game: core.Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
         ) -> bool:
             # Juggernaut can only target self.
             return (
                 (self.phase is None or self.phase == game.phase)
                 and actor.is_alive
-                and (targets is None or (all(t.is_alive for t in targets) and actor in targets))
+                and (
+                    targets is None
+                    or (all(t.is_alive for t in targets) and actor in targets)
+                )
             )
 
     actions = (Juggernaut(),)
@@ -666,7 +887,12 @@ class Macho(Role):
         tags = frozenset({"macho", "rolestop"})
 
         def block_check(
-            self, actor: Player, target: Player, checked_visit: Visit, *, visit: Visit
+            self,
+            actor: Player,
+            target: Player,
+            checked_visit: Visit,
+            *,
+            visit: Visit,
         ) -> bool:
             return "protect" in checked_visit.tags
 
@@ -685,7 +911,8 @@ class Mason(Role):
         elif isinstance(chat := game.chats[self.id], PrivateChat):
             chat.participants.add(player)
         else:
-            raise TypeError(f"Expected PrivateChat, got {type(chat)}.")
+            message = f"Expected PrivateChat, got {type(chat)}."
+            raise TypeError(message)
         chat.send(self.id, f"{player.name} is a {player.role_name}.")
 
     tags = frozenset({"chat", "informed"})
@@ -697,11 +924,17 @@ class Neapolitan(Role):
     class Neapolitan(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
-        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(
+            self,
+            game: core.Game,
+            actor: Player,
+            target: Player,
+            *,
+            visit: Visit,
+        ) -> str:
             if target.role.is_role(Vanilla) and "town" in target.alignment.tags:
                 return f"{target.name} is a Vanilla Townie."
-            else:
-                return f"{target.name} is not a Vanilla Townie."
+            return f"{target.name} is not a Vanilla Townie."
 
     actions = (Neapolitan(),)
 
@@ -729,7 +962,8 @@ class Neighborizer(Role):
             elif isinstance(chat := game.chats[chat_id], PrivateChat):
                 chat.participants.add(target)
             else:
-                raise TypeError(f"Expected PrivateChat, got {type(chat)}.")
+                message = f"Expected PrivateChat, got {type(chat)}."
+                raise TypeError(message)
             chat.send(self.id, f"{target.name} has been added into the neighborhood.")
             return VisitStatus.SUCCESS
 
@@ -771,7 +1005,14 @@ class Rolecop(Role):
     class Rolecop(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
-        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(
+            self,
+            game: core.Game,
+            actor: Player,
+            target: Player,
+            *,
+            visit: Visit,
+        ) -> str:
             return f"{target.name} is a {target.role.id}."
 
     actions = (Rolecop(),)
@@ -795,11 +1036,22 @@ class Tracker(Role):
                 targets = tuple(actor for _ in range(self.target_count))
             target, *_ = targets
             # Wait if target has a pending roleblock.
-            if any("roleblock" in v.tags for v in target.get_visitors(game) if v.is_active(game)):
+            if any(
+                "roleblock" in v.tags
+                for v in target.get_visitors(game)
+                if v.is_active(game)
+            ):
                 return VisitStatus.PENDING
             return super().perform(game, actor, targets, visit=visit)
 
-        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(
+            self,
+            game: core.Game,
+            actor: Player,
+            target: Player,
+            *,
+            visit: Visit,
+        ) -> str:
             visits: list[Player] = []
             for v in target.get_visits(game):
                 if (
@@ -811,8 +1063,7 @@ class Tracker(Role):
 
             if visits:
                 return f"{target.name} targeted {', '.join(p.name for p in visits)}!"
-            else:
-                return f"{target.name} did not target anyone."
+            return f"{target.name} did not target anyone."
 
     actions = (Tracker(),)
 
@@ -823,11 +1074,17 @@ class Vanilla_Cop(Role):
     class Vanilla_Cop(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
-        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(
+            self,
+            game: core.Game,
+            actor: Player,
+            target: Player,
+            *,
+            visit: Visit,
+        ) -> str:
             if target.role.is_role(Vanilla):
                 return f"{target.name} is Vanilla."
-            else:
-                return f"{target.name} is not Vanilla."
+            return f"{target.name} is not Vanilla."
 
     actions = (Vanilla_Cop(),)
 
@@ -869,19 +1126,28 @@ class Watcher(Role):
                 return VisitStatus.PENDING
             return super().perform(game, actor, targets, visit=visit)
 
-        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
-            visits: list[Player] = []
-            for v in target.get_visitors(game):
+        def get_message(
+            self,
+            game: core.Game,
+            actor: Player,
+            target: Player,
+            *,
+            visit: Visit,
+        ) -> str:
+            visits: list[Player] = [
+                v.actor
+                for v in target.get_visitors(game)
                 if (
                     visit_is_visible(v, game)
                     and v is not visit
                     and Personal.can_interact(visit, v)
-                ):
-                    visits.append(v.actor)
+                )
+            ]
             if visits:
-                return f"{target.name} was targeted by {', '.join(p.name for p in visits)}."
-            else:
-                return f"{target.name} was not targeted by anyone."
+                return (
+                    f"{target.name} was targeted by {', '.join(p.name for p in visits)}."
+                )
+            return f"{target.name} was not targeted by anyone."
 
     actions = (Watcher(),)
 
@@ -911,7 +1177,9 @@ class Alien(Role):
             roleblock_result = roleblock_player(game, target, visit=visit)
             rolestop_result = super().perform(game, actor, targets, visit=visit)
             return (
-                VisitStatus.SUCCESS if roleblock_result or rolestop_result else VisitStatus.FAILURE
+                VisitStatus.SUCCESS
+                if roleblock_result or rolestop_result
+                else VisitStatus.FAILURE
             )
 
     actions = (Alien(),)
@@ -922,7 +1190,12 @@ class Ascetic(Role):
 
     class Ascetic(Rolestop):
         def block_check(
-            self, actor: Player, target: Player, checked_visit: Visit, *, visit: Visit
+            self,
+            actor: Player,
+            target: Player,
+            checked_visit: Visit,
+            *,
+            visit: Visit,
         ) -> bool:
             return "kill" not in checked_visit.tags
 
@@ -958,13 +1231,19 @@ class Commuter(Role):
             return success
 
         def check(
-            self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None
+            self,
+            game: core.Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
         ) -> bool:
             # Commuter can only target self.
             return (
                 (self.phase is None or self.phase == game.phase)
                 and actor.is_alive
-                and (targets is None or (all(t.is_alive for t in targets) and actor in targets))
+                and (
+                    targets is None
+                    or (all(t.is_alive for t in targets) and actor in targets)
+                )
             )
 
     actions = (Commuter(),)
@@ -996,13 +1275,17 @@ class Companion(Role):
             visit: Visit,
         ) -> VisitStatus:
             if self.informed_player is None:
-                raise TypeError("Companion has no informed player.")
+                message = "Companion has no informed player."
+                raise ValueError(message)
             message: str = f"{self.informed_player.name} is aligned with the Town."
             actor.private_messages.send(self.id, message)
             return VisitStatus.SUCCESS
 
         def check(
-            self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None
+            self,
+            game: core.Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
         ) -> bool:
             # Companion can only be used once.
             return super().check(game, actor, targets) and actor.uses.get(self, 0) == 0
@@ -1026,17 +1309,17 @@ class Companion(Role):
             if isinstance(action, Companion.Companion):
                 action.informed_player = None
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         id: str | None = None,
         actions: tuple[Ability, ...] | None = None,
         passives: tuple[Ability, ...] | None = None,
-        shared_actions: tuple[Ability, ...] | None = None,
         tags: frozenset[str] | None = None,
+        *,
         is_adjective: bool | None = None,
         informed_player: Player | None = None,
     ):
-        super().__init__(id, actions, passives, shared_actions, tags, is_adjective)
+        super().__init__(id, actions, passives, tags, is_adjective=is_adjective)
         self.actions = (Companion.Companion(informed_player),)
 
 
@@ -1046,15 +1329,22 @@ class Detective(Role):
     class Detective(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
-        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(
+            self,
+            game: core.Game,
+            actor: Player,
+            target: Player,
+            *,
+            visit: Visit,
+        ) -> str:
             if any(
                 "kill" in v.tags
                 for v in target.get_visits(game)
-                if v.ability_type is not AbilityType.PASSIVE and Personal.can_interact(visit, v)
+                if v.ability_type is not AbilityType.PASSIVE
+                and Personal.can_interact(visit, v)
             ):
                 return f"{target.name} has tried to kill someone!"
-            else:
-                return f"{target.name} has not tried to kill anyone."
+            return f"{target.name} has not tried to kill anyone."
 
     actions = (Detective(),)
 
@@ -1086,24 +1376,37 @@ class Goon_Cop(Role):
     class Goon_Cop(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
-        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(
+            self,
+            game: core.Game,
+            actor: Player,
+            target: Player,
+            *,
+            visit: Visit,
+        ) -> str:
             if target.role.is_role(Vanilla) and "mafia" in target.alignment.tags:
                 return f"{target.name} is a Mafia Goon!"
-            else:
-                return f"{target.name} is not a Mafia Goon."
+            return f"{target.name} is not a Mafia Goon."
 
     actions = (Goon_Cop(),)
 
 
 class Hider(Role):
-    """Protects the actor from direct kills, but if the target is killed, the actor is also killed."""
+    """Protects the actor from direct kills, but if the target is killed,
+    the actor is also killed.
+    """
 
     class Hider(Ability):
         class Protect_Self(ProtectiveAbility):
             id = "Hider"
 
             def block_check(
-                self, actor: Player, target: Player, checked_visit: Visit, *, visit: Visit
+                self,
+                actor: Player,
+                target: Player,
+                checked_visit: Visit,
+                *,
+                visit: Visit,
             ) -> bool:
                 return (
                     super().block_check(actor, target, checked_visit, visit=visit)
@@ -1160,10 +1463,22 @@ class Hider(Role):
             if targets is None:
                 targets = tuple(actor for _ in range(self.target_count))
             visit_targets: list[tuple[Player, ...]] = [(actor,), tuple(targets)]
-            visit_types: list[AbilityType] = [AbilityType.PASSIVE, AbilityType.ACTION]
-            for ability, a_targets, a_type in zip(self.abilities, visit_targets, visit_types):
+            visit_types: list[AbilityType] = [
+                AbilityType.PASSIVE,
+                AbilityType.ACTION,
+            ]
+            for ability, a_targets, a_type in zip(
+                self.abilities,
+                visit_targets,
+                visit_types,
+                strict=False,
+            ):
                 visit = Visit(
-                    actor=actor, targets=a_targets, ability=ability, ability_type=a_type, game=game
+                    actor=actor,
+                    targets=a_targets,
+                    ability=ability,
+                    ability_type=a_type,
+                    game=game,
                 )
                 game.visits.append(visit)
             return VisitStatus.SUCCESS
@@ -1171,13 +1486,12 @@ class Hider(Role):
     actions = (Hider(),)
 
 
-def Jack_of_All_Trades(
+def Jack_of_All_Trades(  # noqa: N802
     *roles: type[Role],
     id: str | None = None,
     tags: frozenset[str] | None = None,
 ) -> type[Role]:
     """Has multiple pre-determined 1-Shot roles."""
-
     oneshot = XShot(1)
 
     if not roles:
@@ -1196,7 +1510,10 @@ def Jack_of_All_Trades(
     new_role.id = _id
     new_role.tags = tags
     return new_role
+
+
 Jack_of_All_Trades.id = "Jack of All Trades"  # type: ignore[attr-defined]
+
 
 class Medical_Student(Role):
     """Protects a Vanilla player from one kill."""
@@ -1238,7 +1555,8 @@ class Messenger(Role):
             visit: Visit,
         ) -> int:
             if not isinstance(visit.player_inputs[0], str):
-                raise TypeError("Expected string message.")
+                message = "Expected string message."
+                raise TypeError(message)
             if targets is None:
                 targets = tuple(actor for _ in range(self.target_count))
             target, *_ = targets
@@ -1268,7 +1586,11 @@ class Motion_Detector(Role):
                 targets = tuple(actor for _ in range(self.target_count))
             target, *_ = targets
             # Wait if target has a pending roleblock.
-            if any("roleblock" in v.tags for v in target.get_visitors(game) if v.is_active(game)):
+            if any(
+                "roleblock" in v.tags
+                for v in target.get_visitors(game)
+                if v.is_active(game)
+            ):
                 return VisitStatus.PENDING
             # Wait if target's visitors have a pending roleblock.
             if any(
@@ -1281,21 +1603,31 @@ class Motion_Detector(Role):
                 return VisitStatus.PENDING
             return super().perform(game, actor, targets, visit=visit)
 
-        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(
+            self,
+            game: core.Game,
+            actor: Player,
+            target: Player,
+            *,
+            visit: Visit,
+        ) -> str:
             # Check if target visited someone.
             visited = any(
-                visit_is_visible(v, game) and v is not visit and Personal.can_interact(visit, v)
+                visit_is_visible(v, game)
+                and v is not visit
+                and Personal.can_interact(visit, v)
                 for v in target.get_visits(game)
             )
             # Check if target was visited by someone.
             was_visited = any(
-                visit_is_visible(v, game) and v is not visit and Personal.can_interact(visit, v)
+                visit_is_visible(v, game)
+                and v is not visit
+                and Personal.can_interact(visit, v)
                 for v in target.get_visitors(game)
             )
             if visited or was_visited:
                 return f"{target.name} targeted someone or was targeted by someone."
-            else:
-                return f"{target.name} did not target anyone and was not targeted by anyone."
+            return f"{target.name} did not target anyoneand was not targeted by anyone."
 
     actions = (Motion_Detector(),)
 
@@ -1310,7 +1642,8 @@ class Neighbor(Role):
         elif isinstance(chat := game.chats[chat_id], PrivateChat):
             chat.participants.add(player)
         else:
-            raise TypeError(f"Expected PrivateChat, got {type(chat)}.")
+            message = f"Expected PrivateChat, got {type(chat)}."
+            raise TypeError(message)
         game.chats[chat_id].send(self.id, f"{player.name} is a {self.id}.")
         # Hide full identity of Neighbors.
 
@@ -1346,13 +1679,19 @@ class Ninja(Role):
             return successes
 
         def check(
-            self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None
+            self,
+            game: core.Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
         ) -> bool:
             # Ninja can only target self.
             return (
                 (self.phase is None or self.phase == game.phase)
                 and actor.is_alive
-                and (targets is None or all(t.is_alive for t in targets) and actor in targets)
+                and (
+                    targets is None
+                    or (all(t.is_alive for t in targets) and actor in targets)
+                )
             )
 
     actions = (Ninja(),)
@@ -1364,7 +1703,14 @@ class PT_Cop(Role):
     class PT_Cop(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
-        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(
+            self,
+            game: core.Game,
+            actor: Player,
+            target: Player,
+            *,
+            visit: Visit,
+        ) -> str:
             if any(
                 target in chat.participants
                 for id, chat in game.chats.items()
@@ -1372,8 +1718,7 @@ class PT_Cop(Role):
                 and ("personal" not in visit.tags or not id.startswith("faction:"))
             ):
                 return f"{target.name} is in a Private Chat!"
-            else:
-                return f"{target.name} is not in a Private Chat."
+            return f"{target.name} is not in a Private Chat."
 
     actions = (PT_Cop(),)
 
@@ -1396,18 +1741,30 @@ class Reporter(Role):
                 targets = tuple(actor for _ in range(self.target_count))
             target, *_ = targets
             # Wait if target has a pending roleblock.
-            if any("roleblock" in v.tags for v in target.get_visitors(game) if v.is_active(game)):
+            if any(
+                "roleblock" in v.tags
+                for v in target.get_visitors(game)
+                if v.is_active(game)
+            ):
                 return VisitStatus.PENDING
             return super().perform(game, actor, targets, visit=visit)
 
-        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(
+            self,
+            game: core.Game,
+            actor: Player,
+            target: Player,
+            *,
+            visit: Visit,
+        ) -> str:
             if any(
-                visit_is_visible(v, game) and v is not visit and Personal.can_interact(visit, v)
+                visit_is_visible(v, game)
+                and v is not visit
+                and Personal.can_interact(visit, v)
                 for v in target.get_visits(game)
             ):
                 return f"{target.name} targeted someone this night!"
-            else:
-                return f"{target.name} did not target anyone this night."
+            return f"{target.name} did not target anyone this night."
 
     actions = (Reporter(),)
 
@@ -1447,19 +1804,29 @@ class Role_Watcher(Role):
                 return VisitStatus.PENDING
             return super().perform(game, actor, targets, visit=visit)
 
-        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
-            roles: list[str] = []
-            for v in target.get_visitors(game):
+        def get_message(
+            self,
+            game: core.Game,
+            actor: Player,
+            target: Player,
+            *,
+            visit: Visit,
+        ) -> str:
+            roles: list[str] = [
+                v.actor.role.id
+                for v in target.get_visitors(game)
                 if (
                     visit_is_visible(v, game)
                     and v is not visit
                     and Personal.can_interact(visit, v)
-                ):
-                    roles.append(v.actor.role.id)
+                )
+            ]
             if roles:
-                return f"{target.name} was targeted by the following roles: {', '.join(roles)}."
-            else:
-                return f"{target.name} was not targeted by anyone."
+                return (
+                    f"{target.name} was targeted by the following roles: "
+                    f"{', '.join(roles)}."
+                )
+            return f"{target.name} was not targeted by anyone."
 
     actions = (Role_Watcher(),)
 
@@ -1488,11 +1855,14 @@ class Shield(Role):
                 return VisitStatus.PENDING
             max_blocks: int | None
             if visit.ability_type is AbilityType.PASSIVE and isinstance(
-                visit.ability, XShot.XShotPrototype
+                visit.ability,
+                XShot.XShotPrototype,
             ):
                 uses_remaining = visit.ability.max_uses - actor.uses.get(visit.ability, 0)
                 max_blocks = (
-                    min(self.limit, uses_remaining) if self.limit is not None else uses_remaining
+                    min(self.limit, uses_remaining)
+                    if self.limit is not None
+                    else uses_remaining
                 )
             else:
                 max_blocks = self.limit
@@ -1503,7 +1873,10 @@ class Shield(Role):
                     and "unstoppable" not in v.tags
                     and self.block_check(actor, target, v, visit=visit)
                 ):
-                    if self.block_visit(actor, target, v, visit=visit) >= VisitStatus.SUCCESS:
+                    if (
+                        self.block_visit(actor, target, v, visit=visit)
+                        >= VisitStatus.SUCCESS
+                    ):
                         successes += 1
                     if max_blocks is not None and max_blocks <= successes:
                         if successes:
@@ -1540,7 +1913,14 @@ class Traffic_Analyst(Role):
                     return VisitStatus.PENDING
             return super().perform(game, actor, targets, visit=visit)
 
-        def get_message(self, game: core.Game, actor: Player, target: Player, *, visit: Visit) -> str:
+        def get_message(
+            self,
+            game: core.Game,
+            actor: Player,
+            target: Player,
+            *,
+            visit: Visit,
+        ) -> str:
             has_private_chat = any(
                 target in chat.participants
                 and len({p for p in chat.participants if p.is_alive}) > 1
@@ -1559,13 +1939,12 @@ class Traffic_Analyst(Role):
                 "message" in p.tags
                 for p in target.passives
                 # Check if ability is actually usable (i.e. blocked by X-Shot)
-                if p.valid_targets(game, target, True)
+                if p.valid_targets(game, target, is_passive=True)
                 and ("personal" not in visit.tags or "factional" not in p.tags)
             )
             if has_private_chat or can_message_privately:
                 return f"{target.name} can communicate with other players privately!"
-            else:
-                return f"{target.name} cannot communicate with other players privately."
+            return f"{target.name} cannot communicate with other players privately."
 
     actions = (Traffic_Analyst(),)
 
@@ -1587,7 +1966,11 @@ class Universal_Backup(Role):
             visit: Visit,
         ) -> int:
             dead_players = sorted(
-                (p for p in game.players if p.death_causes and p.alignment is actor.alignment),
+                (
+                    p
+                    for p in game.players
+                    if p.death_causes and p.alignment is actor.alignment
+                ),
                 key=lambda p: ("Mafia Factional Kill" in p.death_causes),
             )
             if not dead_players:
@@ -1599,27 +1982,29 @@ class Universal_Backup(Role):
                 try:
                     actor.passives.remove(self)
                 except ValueError:
-                    try:
+                    with contextlib.suppress(ValueError):
                         actor.shared_actions.remove(self)
-                    except ValueError:
-                        pass
             # Gain abilities of dead player's role:
             dead_player = dead_players[0]
             actor.actions.extend(dead_player.role.actions)
             actor.passives.extend(dead_player.role.passives)
-            actor.shared_actions.extend(dead_player.role.shared_actions)
             for action in dead_player.role.actions:
-                actor.uses[action] = actor.uses.get(action, 0) + dead_player.uses.get(action, 0)
+                actor.uses[action] = actor.uses.get(action, 0) + dead_player.uses.get(
+                    action,
+                    0,
+                )
             for passive in dead_player.role.passives:
-                actor.uses[passive] = actor.uses.get(passive, 0) + dead_player.uses.get(passive, 0)
-            for shared_action in dead_player.role.shared_actions:
-                actor.uses[shared_action] = actor.uses.get(
-                    shared_action, 0
-                ) + dead_player.uses.get(shared_action, 0)
+                actor.uses[passive] = actor.uses.get(passive, 0) + dead_player.uses.get(
+                    passive,
+                    0,
+                )
             return VisitStatus.SUCCESS
 
         def check(
-            self, game: core.Game, actor: Player, targets: Sequence[Player] | None = None
+            self,
+            game: core.Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
         ) -> bool:
             return (self.phase is None or game.phase == self.phase) and actor.is_alive
 
@@ -1655,20 +2040,20 @@ class XShot(AbilityModifier):
                 return type(
                     f"{self!r}({ability.__name__})",
                     (ability,),
-                    dict(
-                        id=ability.id,
-                        max_uses=ability.max_uses,
-                        tags=ability.tags | self.tags,
-                    )
+                    {
+                        "id": ability.id,
+                        "max_uses": ability.max_uses,
+                        "tags": ability.tags | self.tags,
+                    },
                 )
             return type(
                 f"{self!r}({ability.__name__})",
                 (ability,),
-                dict(
-                    id=ability.id,
-                    max_uses=self.max_uses,
-                    tags=ability.tags | self.tags,
-                )
+                {
+                    "id": ability.id,
+                    "max_uses": self.max_uses,
+                    "tags": ability.tags | self.tags,
+                },
             )
 
         def check(
@@ -1685,12 +2070,12 @@ class XShot(AbilityModifier):
         return type(
             f"{self!r}({ability.__name__})",
             (XShot.XShotPrototype, ability),
-            dict(
-                id=ability.id,
-                max_uses=self.max_uses,
-                tags=ability.tags | self.tags,
-                check=check,
-            ),
+            {
+                "id": ability.id,
+                "max_uses": self.max_uses,
+                "tags": ability.tags | self.tags,
+                "check": check,
+            },
         )
 
     id = "X-Shot"
@@ -1723,17 +2108,17 @@ class Night_Specific(AbilityModifier):
             targets: Sequence[Player] | None = None,
         ) -> bool:
             return ability.check(method_self, game, actor, targets) and self.night_check(
-                game.day_no
+                game.day_no,
             )
 
         return type(
             f"{self!r}({ability.__name__})",
             (ability,),
-            dict(
-                id=ability.id,
-                tags=ability.tags | self.tags,
-                check=check,
-            ),
+            {
+                "id": ability.id,
+                "tags": ability.tags | self.tags,
+                "check": check,
+            },
         )
 
     def night_check(self, day_no: int, /) -> bool:
@@ -1772,15 +2157,16 @@ class Activated(Modifier):
 
     T = TypeVar("T", Role, Alignment)
 
-    def modify(self, cls: type[T], cls_dict: dict[str, Any] | None = None) -> type[T]:
+    def modify_cls(self, cls: type[T], cls_dict: dict[str, Any] | None = None) -> type[T]:
         if cls_dict is None:
             cls_dict = {
                 "id": f"{self.id} {cls.id}" if issubclass(cls, Role) else cls.id,
                 "actions": cls.actions + cls.passives,
                 "passives": (),
-                "shared_actions": cls.shared_actions,
                 "tags": cls.tags | self.tags,
             }
+            if issubclass(cls, Alignment):
+                cls_dict["shared_actions"] = cls.shared_actions
         return type(
             f"{self!r}({cls.__name__})",
             (cls,),
@@ -1788,12 +2174,15 @@ class Activated(Modifier):
         )
 
     def modify_role(self, role: type[Role], *args: Any, **kwargs: Any) -> type[Role]:
-        return self.modify(role)
+        return self.modify_cls(role)
 
     def modify_alignment(
-        self, alignment: type[Alignment], *args: Any, **kwargs: Any
+        self,
+        alignment: type[Alignment],
+        *args: Any,
+        **kwargs: Any,
     ) -> type[Alignment]:
-        return self.modify(alignment)
+        return self.modify_cls(alignment)
 
 
 class Disloyal(AbilityModifier):
@@ -1818,11 +2207,11 @@ class Disloyal(AbilityModifier):
         return type(
             f"{self!r}({ability.__name__})",
             (ability,),
-            dict(
-                id=ability.id,
-                tags=ability.tags | self.tags,
-                perform=perform,
-            ),
+            {
+                "id": ability.id,
+                "tags": ability.tags | self.tags,
+                "perform": perform,
+            },
         )
 
 
@@ -1848,11 +2237,11 @@ class Loyal(AbilityModifier):
         return type(
             f"{self!r}({ability.__name__})",
             (ability,),
-            dict(
-                id=ability.id,
-                tags=ability.tags | self.tags,
-                perform=perform,
-            ),
+            {
+                "id": ability.id,
+                "tags": ability.tags | self.tags,
+                "perform": perform,
+            },
         )
 
 
@@ -1872,7 +2261,7 @@ class Indecisive(AbilityModifier):
                 if (
                     method_self is v.ability
                     and game.day_no <= v.day_no + 1
-                    and any(a is b for a, b in zip(targets, v.targets))
+                    and any(a is b for a, b in zip(targets, v.targets, strict=False))
                 ):
                     return False
             return ability.check(method_self, game, actor, targets)
@@ -1880,11 +2269,11 @@ class Indecisive(AbilityModifier):
         return type(
             f"{self!r}({ability.__name__})",
             (ability,),
-            dict(
-                id=ability.id,
-                tags=ability.tags | self.tags,
-                check=check,
-            ),
+            {
+                "id": ability.id,
+                "tags": ability.tags | self.tags,
+                "check": check,
+            },
         )
 
 
@@ -1908,11 +2297,11 @@ class Non_Consecutive_Night(AbilityModifier):
         return type(
             f"{self!r}({ability.__name__})",
             (ability,),
-            dict(
-                id=ability.id,
-                tags=ability.tags | self.tags,
-                check=check,
-            ),
+            {
+                "id": ability.id,
+                "tags": ability.tags | self.tags,
+                "check": check,
+            },
         )
 
 
@@ -1936,18 +2325,20 @@ class Weak(AbilityModifier):
             *,
             visit: Visit,
         ) -> int:
-            if targets is not None and any("town" not in t.alignment.tags for t in targets):
+            if targets is not None and any(
+                "town" not in t.alignment.tags for t in targets
+            ):
                 actor.kill(self.id)
             return ability.perform(method_self, game, actor, targets, visit=visit)
 
         return type(
             f"{self!r}({ability.__name__})",
             (ability,),
-            dict(
-                id=ability.id,
-                tags=ability.tags | self.tags,
-                perform=perform,
-            ),
+            {
+                "id": ability.id,
+                "tags": ability.tags | self.tags,
+                "perform": perform,
+            },
         )
 
 
@@ -1988,7 +2379,8 @@ class Mafia(Faction):
         elif isinstance(chat := game.chats[chat_id], PrivateChat):
             chat.participants.add(player)
         else:
-            raise TypeError(f"Expected PrivateChat, got {type(chat)}.")
+            message = f"Expected PrivateChat, got {type(chat)}."
+            raise TypeError(message)
         chat.send(self.id, f"{player.name} is a {player.role_name}.")
 
     shared_actions = (Mafia_Factional_Kill(),)
@@ -2002,8 +2394,7 @@ class Mafia(Faction):
     def _demonym(self) -> str:
         if self.id.endswith("fia"):
             return f"{self.id[:1]}oso"
-        else:
-            return f"{self} Goon"
+        return f"{self} Goon"
 
 
 class Serial_Killer(Faction):
@@ -2032,23 +2423,42 @@ COMBINED_ROLES: dict[str, Callable[..., type[Role]]] = {}
 ALIGNMENTS: dict[str, type[Alignment] | Callable[..., Alignment]] = {}
 MODIFIERS: dict[str, type[Modifier] | Callable[..., Modifier]] = {}
 
+
+def index_by_return_type(
+    obj: Callable[..., Any],
+    name: str,
+) -> None:
+    """Index a callable by its return type."""
+    rt = get_type_hints(obj).get("return", None)
+    if rt is not None and isinstance(rt, type):
+        if issubclass(rt, Role):
+            ROLES[name] = obj
+        if issubclass(rt, Alignment):
+            ALIGNMENTS[name] = obj
+        if issubclass(rt, Modifier):
+            MODIFIERS[name] = obj
+    if (
+        get_origin(rt) is type
+        and len(args := get_args(rt)) > 0
+        and isinstance(args[0], type)
+        and issubclass(args[0], Role)
+    ):
+        COMBINED_ROLES[name] = obj
+
+
 def index_types(namespace: dict[str, Any]) -> None:
-    """
-    Index all roles, alignments, and modifiers in the given namespace.
+    """Index all roles, alignments, and modifiers in the given namespace.
     Access them through the ROLES, COMBINED_ROLES, ALIGNMENTS, and MODIFIERS dictionaries.
     """
-    global ROLES, COMBINED_ROLES, ALIGNMENTS, MODIFIERS
-    
-    variables = namespace.copy()  # prevent errors if namespace is modified during iteration
-    
-    for name, obj in variables.items():
+    # prevent errors if namespace is modified during iteration
+    variables = namespace.copy()
+
+    for default_name, obj in variables.items():
         if not callable(obj):
             continue
         if obj.__module__ == "mafia.core":
             continue  # Core types are not implementations.
-        name = getattr(obj, "id",
-            getattr(obj, "__name__",
-            name))
+        name = getattr(obj, "id", getattr(obj, "__name__", default_name))
         if isinstance(obj, type):
             if issubclass(obj, Role):
                 ROLES[name] = obj
@@ -2057,20 +2467,7 @@ def index_types(namespace: dict[str, Any]) -> None:
             if issubclass(obj, Modifier):
                 MODIFIERS[name] = obj
         else:
-            rt = get_type_hints(obj).get("return", None)
-            if rt is not None and isinstance(rt, type):
-                if issubclass(rt, Role):
-                    ROLES[name] = obj
-                if issubclass(rt, Alignment):
-                    ALIGNMENTS[name] = obj
-                if issubclass(rt, Modifier):
-                    MODIFIERS[name] = obj
-            if (
-                get_origin(rt) is type
-                and len(args := get_args(rt)) > 0
-                and isinstance(args[0], type)
-                and issubclass(args[0], Role)
-            ):
-                COMBINED_ROLES[name] = obj
+            index_by_return_type(obj, name)
+
 
 index_types(vars())
