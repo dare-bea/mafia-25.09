@@ -311,7 +311,7 @@ class Resolver:
         elim = self.vote_elimination(game)
         if elim is not None:
             return False
-        return game.get_votes(None) < len(game.players) / 2
+        return game.get_votes(None) < len(tuple(game.alive_players)) / 2
 
     def vote_elimination(self, game: core.Game) -> Player | None:
         """Get the player to be eliminated by vote.
@@ -321,7 +321,7 @@ class Resolver:
         if not game.is_voting_phase():
             return None
         for p in game.players:
-            if game.get_votes(p) > len(game.players) / 2:
+            if game.get_votes(p) > len(tuple(game.alive_players)) / 2:
                 return p
         return None
 
@@ -1972,6 +1972,7 @@ class Universal_Backup(Role):
                     if p.death_causes and p.alignment is actor.alignment
                 ),
                 key=lambda p: ("Mafia Factional Kill" in p.death_causes),
+                reverse=True,
             )
             if not dead_players:
                 return VisitStatus.FAILURE
@@ -2344,7 +2345,9 @@ class Weak(AbilityModifier):
 
 class Personal(AbilityModifier):
     """Cannot interact with factional abilities.
-    Does not check: implement in ability.
+
+    Warning: This modifier does not check on its own.
+    Make sure can_interact() is used in the ability's perform() method.
     """
 
     tags = frozenset({"personal"})
@@ -2353,6 +2356,47 @@ class Personal(AbilityModifier):
     def can_interact(visit: Visit, affected_visit: Visit) -> bool:
         return "personal" not in visit.tags or "factional" not in affected_visit.tags
 
+
+class Personal_v2(AbilityModifier):
+    """Cannot interact with factional abilities.
+
+    Unlike Personal, this modifier checks on its own.
+    It temporarily removes factional abilities from the game, and then adds them back
+    after the ability is performed.
+    """
+
+    id = Personal.id
+    tags = frozenset({"personal"})
+
+    def modify_ability(self, ability: type[Ability]) -> type[Ability]:
+        def perform(
+            method_self: Ability,
+            game: core.Game,
+            actor: Player,
+            targets: Sequence[Player] | None = None,
+            *,
+            visit: Visit,
+        ) -> int:
+            og_visits = game.visits
+            game.visits = [v for v in game.visits if "factional" not in v.tags]
+
+            # If the ability raises an exception, we still want to restore the visits,
+            # especially if the failure is handled in the caller.
+            try:
+                result = ability.perform(method_self, game, actor, targets, visit=visit)
+            finally:
+                game.visits = og_visits
+            return result
+
+        return type(
+            f"{self!r}({ability.__name__})",
+            (ability,),
+            {
+                "id": ability.id,
+                "tags": ability.tags | self.tags,
+                "perform": perform,
+            },
+        )
 
 # ALIGNMENTS #
 
