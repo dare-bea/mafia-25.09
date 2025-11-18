@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
 from dataclasses import InitVar, dataclass, field
 from enum import Enum, IntEnum, auto
@@ -91,7 +92,7 @@ class Ability:
         it will be set to the class docstring.
         """
         if "id" not in cls.__dict__:
-            cls.id = cls.__name__.replace("_", " ")
+            cls.id = re.sub(r"(_*[A-Z_])", r" \1", cls.__name__).strip()
         if "description" not in cls.__dict__ and cls.__doc__ is not None:
             cls.description = cls.__doc__.strip()
 
@@ -297,7 +298,7 @@ class Role:
         If the subclass does not have an `id` attribute, it will be set to the class name.
         """
         if "id" not in cls.__dict__:
-            cls.id = cls.__name__.replace("_", " ")
+            cls.id = re.sub(r"(_*[A-Z_])", r" \1", cls.__name__).strip()
 
     def __str__(self) -> str:
         """Return the ID of the role."""
@@ -446,7 +447,7 @@ class Alignment:
         If the subclass does not have an `id` attribute, it will be set to the class name.
         """
         if "id" not in cls.__dict__:
-            cls.id = cls.__name__.replace("_", " ")
+            cls.id = re.sub(r"(_*[A-Z_])", r" \1", cls.__name__).strip()
 
     def player_init(self, game: Game, player: Player) -> None:
         """Initialize a player with this alignment."""
@@ -521,7 +522,7 @@ class Modifier:
         If the subclass does not have an `id` attribute, it will be set to the class name.
         """
         if "id" not in cls.__dict__:
-            cls.id = cls.__name__.replace("_", " ")
+            cls.id = re.sub(r"(_*[A-Z_])", r" \1", cls.__name__).strip()
 
     id: str
     tags: frozenset[str] = frozenset()
@@ -587,7 +588,7 @@ class AbilityModifier(Modifier):
         If the subclass does not have an `id` attribute, it will be set to the class name.
         """
         if "id" not in cls.__dict__:
-            cls.id = cls.__name__.replace("_", " ")
+            cls.id = re.sub(r"(_*[A-Z_])", r" \1", cls.__name__).strip()
 
     id: str
 

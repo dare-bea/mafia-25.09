@@ -326,7 +326,7 @@ def test_jack_of_all_trades() -> None:
     mafia = normal.Mafia()
     game = core.Game(start_phase=core.Phase.NIGHT)
 
-    joat = normal.Jack_of_All_Trades(
+    joat = normal.jack_of_all_trades(
         normal.Cop,
         normal.Doctor,
     )
@@ -389,7 +389,7 @@ def test_traffic_analyst() -> None:
     mafia = normal.Mafia()
     game = core.Game(start_phase=core.Phase.NIGHT)
 
-    alice = core.Player("Alice", normal.Traffic_Analyst(), town)
+    alice = core.Player("Alice", normal.TrafficAnalyst(), town)
     bob = core.Player("Bob", normal.Mason(), town)
     carol = core.Player("Carol", normal.Mason(), town)
     dave = core.Player("Dave", normal.Messenger(), town)
@@ -433,7 +433,7 @@ def test_universal_backup() -> None:
     mafia = normal.Mafia()
     game = core.Game(start_phase=core.Phase.NIGHT)
 
-    alice = core.Player("Alice", normal.Universal_Backup(), town)
+    alice = core.Player("Alice", normal.UniversalBackup(), town)
     bob = core.Player("Bob", normal.Vigilante(), town)
     carol = core.Player("Carol", normal.Cop(), town)
     dave = core.Player("Dave", normal.Doctor(), mafia)

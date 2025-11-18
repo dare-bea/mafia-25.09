@@ -120,7 +120,9 @@ class Resolver:
             visit.actor.uses[visit.ability] += status
         return status
 
-    def resolve_visit(self, game: core.Game, visit: Visit) -> int:  # noqa: PLR0911
+    def resolve_visit(  # noqa: PLR0911
+        self, game: core.Game, visit: Visit
+    ) -> int:
         """Resolve a visit and return the result.
 
         If the visit cannot be resolved, return VisitStatus.PENDING.
@@ -681,10 +683,10 @@ class Doctor(Role):
     actions = (Doctor(),)
 
 
-class Friendly_Neighbor(Role):
+class FriendlyNeighbor(Role):
     """Informs a player of the actor's alignment."""
 
-    class Friendly_Neighbor(Ability):
+    class FriendlyNeighbor(Ability):
         """You may target another player to inform them
         that you are aligned with the Town.
         """
@@ -706,7 +708,7 @@ class Friendly_Neighbor(Role):
             target.private_messages.send(self.id, message)
             return VisitStatus.SUCCESS
 
-    actions = (Friendly_Neighbor(),)
+    actions = (FriendlyNeighbor(),)
 
 
 class Gunsmith(Role):
@@ -760,10 +762,10 @@ class Gunsmith(Role):
     actions = (Gunsmith(),)
 
 
-class Innocent_Child(Role):
+class InnocentChild(Role):
     """Informs all players of the actor's alignment."""
 
-    class Innocent_Child(Ability):
+    class InnocentChild(Ability):
         phase = None
         immediate = True
         target_count = 0
@@ -790,7 +792,7 @@ class Innocent_Child(Role):
             game.chats["global"].send(self.id, message)
             return VisitStatus.SUCCESS
 
-    actions = (Innocent_Child(),)
+    actions = (InnocentChild(),)
 
 
 class Jailkeeper(Role):
@@ -1068,10 +1070,10 @@ class Tracker(Role):
     actions = (Tracker(),)
 
 
-class Vanilla_Cop(Role):
+class VanillaCop(Role):
     """Checks if a player is Vanilla."""
 
-    class Vanilla_Cop(InvestigativeAbility):
+    class VanillaCop(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
         def get_message(
@@ -1086,7 +1088,7 @@ class Vanilla_Cop(Role):
                 return f"{target.name} is Vanilla."
             return f"{target.name} is not Vanilla."
 
-    actions = (Vanilla_Cop(),)
+    actions = (VanillaCop(),)
 
 
 class Vigilante(Role):
@@ -1349,10 +1351,10 @@ class Detective(Role):
     actions = (Detective(),)
 
 
-class Fruit_Vendor(Role):
+class FruitVendor(Role):
     """Tells a player that they were given fruit, but not who gave it to them."""
 
-    class Fruit_Vendor(Ability):
+    class FruitVendor(Ability):
         def perform(
             self,
             game: core.Game,
@@ -1367,13 +1369,13 @@ class Fruit_Vendor(Role):
             target.private_messages.send(self.id, "You were given fruit.")
             return VisitStatus.SUCCESS
 
-    actions = (Fruit_Vendor(),)
+    actions = (FruitVendor(),)
 
 
-class Goon_Cop(Role):
+class GoonCop(Role):
     """Checks if a player is a Mafia Goon."""
 
-    class Goon_Cop(InvestigativeAbility):
+    class GoonCop(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
         def get_message(
@@ -1388,7 +1390,7 @@ class Goon_Cop(Role):
                 return f"{target.name} is a Mafia Goon!"
             return f"{target.name} is not a Mafia Goon."
 
-    actions = (Goon_Cop(),)
+    actions = (GoonCop(),)
 
 
 class Hider(Role):
@@ -1397,7 +1399,7 @@ class Hider(Role):
     """
 
     class Hider(Ability):
-        class Protect_Self(ProtectiveAbility):
+        class ProtectSelf(ProtectiveAbility):
             id = "Hider"
 
             def block_check(
@@ -1448,7 +1450,7 @@ class Hider(Role):
         def __init__(self, id: str | None = None, tags: frozenset[str] | None = None):
             super().__init__(id, tags)
             self.abilities: list[Ability] = [
-                self.Protect_Self(self.id, self.Protect_Self.tags | {"hidden"}),
+                self.ProtectSelf(self.id, self.ProtectSelf.tags | {"hidden"}),
                 self.Lifelink(self.id, self.Lifelink.tags | {"hidden"}),
             ]
 
@@ -1486,7 +1488,7 @@ class Hider(Role):
     actions = (Hider(),)
 
 
-def Jack_of_All_Trades(  # noqa: N802
+def jack_of_all_trades(
     *roles: type[Role],
     id: str | None = None,
     tags: frozenset[str] | None = None,
@@ -1512,13 +1514,13 @@ def Jack_of_All_Trades(  # noqa: N802
     return new_role
 
 
-Jack_of_All_Trades.id = "Jack of All Trades"  # type: ignore[attr-defined]
+jack_of_all_trades.id = "Jack of All Trades"  # type: ignore[attr-defined]
 
 
-class Medical_Student(Role):
+class MedicalStudent(Role):
     """Protects a Vanilla player from one kill."""
 
-    class Medical_Student(Doctor.Doctor):
+    class MedicalStudent(Doctor.Doctor):
         tags = frozenset({"protect", "mafia_no_gun"})
 
         def perform(
@@ -1536,7 +1538,7 @@ class Medical_Student(Role):
                 return super().perform(game, actor, targets, visit=visit)
             return VisitStatus.FAILURE
 
-    actions = (Medical_Student(),)
+    actions = (MedicalStudent(),)
 
 
 class Messenger(Role):
@@ -1566,12 +1568,12 @@ class Messenger(Role):
     actions = (Messenger(),)
 
 
-class Motion_Detector(Role):
+class MotionDetector(Role):
     """Checks if a player targeted someone or was targeted by someone.
     Receives the same result from both checks.
     """
 
-    class Motion_Detector(InvestigativeAbility):
+    class MotionDetector(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
         def perform(
@@ -1629,7 +1631,7 @@ class Motion_Detector(Role):
                 return f"{target.name} targeted someone or was targeted by someone."
             return f"{target.name} did not target anyoneand was not targeted by anyone."
 
-    actions = (Motion_Detector(),)
+    actions = (MotionDetector(),)
 
 
 class Neighbor(Role):
@@ -1697,10 +1699,13 @@ class Ninja(Role):
     actions = (Ninja(),)
 
 
-class PT_Cop(Role):
+class PTCop(Role):
     """Check if a player is in a Private Chat."""
 
-    class PT_Cop(InvestigativeAbility):
+    id = "PT Cop"
+
+    class PTCop(InvestigativeAbility):
+        id = "PT Cop"
         tags = frozenset({"investigate", "gun"})
 
         def get_message(
@@ -1720,7 +1725,7 @@ class PT_Cop(Role):
                 return f"{target.name} is in a Private Chat!"
             return f"{target.name} is not in a Private Chat."
 
-    actions = (PT_Cop(),)
+    actions = (PTCop(),)
 
 
 class Reporter(Role):
@@ -1776,10 +1781,10 @@ class Rolestopper(Role):
     actions = (Rolestopper(),)
 
 
-class Role_Watcher(Role):
+class RoleWatcher(Role):
     """Checks a player to learn all roles that targeted them."""
 
-    class Role_Watcher(InvestigativeAbility):
+    class RoleWatcher(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
         def perform(
@@ -1828,7 +1833,7 @@ class Role_Watcher(Role):
                 )
             return f"{target.name} was not targeted by anyone."
 
-    actions = (Role_Watcher(),)
+    actions = (RoleWatcher(),)
 
 
 class Shield(Role):
@@ -1891,12 +1896,12 @@ class Shield(Role):
     actions = (Shield(),)
 
 
-class Traffic_Analyst(Role):
+class TrafficAnalyst(Role):
     """Check if a player can communicate with other players privately.
     This does not include chats with only 1 remaining living player.
     """
 
-    class Traffic_Analyst(InvestigativeAbility):
+    class TrafficAnalyst(InvestigativeAbility):
         tags = frozenset({"investigate", "gun"})
 
         def perform(
@@ -1946,13 +1951,13 @@ class Traffic_Analyst(Role):
                 return f"{target.name} can communicate with other players privately!"
             return f"{target.name} cannot communicate with other players privately."
 
-    actions = (Traffic_Analyst(),)
+    actions = (TrafficAnalyst(),)
 
 
-class Universal_Backup(Role):
+class UniversalBackup(Role):
     """Inherits the role of the first allied Non-Vanilla player to die."""
 
-    class Universal_Backup(Ability):
+    class UniversalBackup(Ability):
         phase = None
         immediate = True
         target_count = 0
@@ -2009,7 +2014,7 @@ class Universal_Backup(Role):
         ) -> bool:
             return (self.phase is None or game.phase == self.phase) and actor.is_alive
 
-    passives = (Universal_Backup(),)
+    passives = (UniversalBackup(),)
 
 
 # ROLE MODIFIERS #
@@ -2088,7 +2093,7 @@ class XShot(AbilityModifier):
     max_uses: int = 1
 
 
-class Night_Specific(AbilityModifier):
+class NightSpecific(AbilityModifier):
     """Can only use their abilities on specific nights."""
 
     def __init__(
@@ -2109,7 +2114,7 @@ class Night_Specific(AbilityModifier):
             targets: Sequence[Player] | None = None,
         ) -> bool:
             return ability.check(method_self, game, actor, targets) and self.night_check(
-                game.day_no,
+                game.day_no
             )
 
         return type(
@@ -2126,7 +2131,7 @@ class Night_Specific(AbilityModifier):
         raise NotImplementedError
 
 
-class Night_X(Night_Specific):
+class NightX(NightSpecific):
     """Can only use their abilities on nights listed."""
 
     def __init__(
@@ -2278,7 +2283,7 @@ class Indecisive(AbilityModifier):
         )
 
 
-class Non_Consecutive_Night(AbilityModifier):
+class NonConsecutiveNight(AbilityModifier):
     """Cannot use the ability on consecutive nights."""
 
     id = "Non-Consecutive Night"
@@ -2357,7 +2362,7 @@ class Personal(AbilityModifier):
         return "personal" not in visit.tags or "factional" not in affected_visit.tags
 
 
-class Personal_v2(AbilityModifier):
+class PersonalV2(AbilityModifier):
     """Cannot interact with factional abilities.
 
     Unlike Personal, this modifier checks on its own.
@@ -2412,7 +2417,7 @@ class Town(Faction):
 class Mafia(Faction):
     """The informed minority."""
 
-    class Mafia_Factional_Kill(Kill):
+    class MafiaFactionalKill(Kill):
         tags = frozenset({"kill", "factional_kill"})
 
     def player_init(self, game: core.Game, player: Player) -> None:
@@ -2428,7 +2433,7 @@ class Mafia(Faction):
             raise TypeError(message)
         chat.send(self.id, f"{player.name} is a {player.role_name}.")
 
-    shared_actions = (Mafia_Factional_Kill(),)
+    shared_actions = (MafiaFactionalKill(),)
     tags = frozenset({"mafia", "chat", "informed"})
     demonym = "{alignment._demonym}"
     role_names: dict[str, str] = {
@@ -2442,10 +2447,10 @@ class Mafia(Faction):
         return f"{self} Goon"
 
 
-class Serial_Killer(Faction):
+class SerialKiller(Faction):
     """Self-aligned third party."""
 
-    class Serial_Killer_Factional_Kill(Kill):
+    class SerialKillerFactionalKill(Kill):
         tags = frozenset({"kill", "factional_kill"})
 
     def check_win(self, game: core.Game, player: Player) -> WinResult:
@@ -2454,7 +2459,7 @@ class Serial_Killer(Faction):
             return WinResult.WIN
         return super().check_win(game, player)
 
-    actions = (Serial_Killer_Factional_Kill(),)
+    actions = (SerialKillerFactionalKill(),)
     tags = frozenset({"third_party"})
     role_names: dict[str, str] = {
         "Vanilla": "{alignment}",
