@@ -1,9 +1,9 @@
-__all__ = [
-    "core",
-    "normal",
-    "api"
-]
+"""The mafia party game, a framework for creating mafia games.
 
-from . import core
-from . import normal
-from . import api
+Includes a core framework for creating roles and alignments,
+and a collection of pre-made roles, modifiers, and alignment.
+"""
+
+__all__ = ["api", "core", "normal"]
+
+from . import api, core, normal

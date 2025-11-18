@@ -1,15 +1,19 @@
-from collections.abc import Iterable, Hashable
-from typing import TypeVar
 from collections import defaultdict
+from collections.abc import Hashable, Iterable
+from typing import TypeVar
 
 Node = TypeVar("Node", bound=Hashable)
 
 
-def nodes_in_cycles(edges: Iterable[tuple[Node, Node]]) -> set[Node]:
-    """Given an iterable of directed edges (u, v), return the set of nodes
-    that belong to at least one directed cycle.
+def nodes_in_cycles(edges: Iterable[tuple[Node, Node]]) -> set[Node]:  # noqa: C901
+    """Return the set of nodes that belong to at least one directed cycle.
 
+    Uses Tarjan's algorithm.
+
+    :param edges: An iterable of directed edges (u, v) where u and v are nodes.
     Nodes can be any hashable type (int, str, ...).
+
+    :return: A set of nodes that belong to at least one directed cycle.
     """
     # build adjacency and node set
     graph: defaultdict[Node, list[Node]] = defaultdict(list)
