@@ -2495,10 +2495,7 @@ def index_types(namespace: dict[str, Any]) -> None:
     """Index all roles, alignments, and modifiers in the given namespace.
     Access them through the ROLES, COMBINED_ROLES, ALIGNMENTS, and MODIFIERS dictionaries.
     """
-    # prevent errors if namespace is modified during iteration
-    variables = namespace.copy()
-
-    for default_name, obj in variables.items():
+    for default_name, obj in namespace.items():
         if not callable(obj):
             continue
         if obj.__module__ == "mafia.core":
