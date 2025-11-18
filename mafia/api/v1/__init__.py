@@ -131,6 +131,22 @@ def game_get(gid: int) -> models.GameResponseModel | models.ErrorResponse:
     )
 
 
+@api_bp.delete("/games/<int:gid>")
+@validate()  # type: ignore[misc]
+def game_delete(gid: int) -> models.EmptyResponse | models.ErrorResponse:
+    """Delete a game."""
+    if gid not in games:
+        return {"message": "Game not found"}, 404
+    game = games[gid]
+    mod_token, player = get_permissions(game, request.headers)
+    if mod_token is None and player is None:
+        return {"message": "Not authenticated"}, 401
+    if mod_token != game.mod_token:
+        return {"message": "Not the moderator"}, 403
+    del games[gid]
+    return "", 204
+
+
 @api_bp.put("/games/<int:gid>")
 @validate()  # type: ignore[misc]
 def game_put(
