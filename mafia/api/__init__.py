@@ -17,6 +17,6 @@ from flask import Blueprint
 from . import core, v0, v1
 
 # Create API blueprint as a collection of all API versions.
-api_bp = Blueprint("api", __name__, url_prefix="/api")
+api_bp = Blueprint("api", __name__)
 api_bp.register_blueprint(v0.api_bp)
 api_bp.register_blueprint(v1.api_bp)

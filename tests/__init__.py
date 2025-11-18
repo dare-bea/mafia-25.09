@@ -15,7 +15,7 @@ from flask import Flask
 
 from mafia import _status as status
 from mafia import core, normal
-from mafia.api.v1 import api_bp
+from mafia.api import api_bp
 from mafia.core import AbilityType, VisitStatus
 from mafia.normal import LoggingResolver
 
