@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
+from collections.abc import Generator, Iterable, Iterator, Sequence
 from dataclasses import InitVar, dataclass, field
 from enum import Enum, IntEnum, auto
 from itertools import product
@@ -328,10 +328,7 @@ class Role:
 
     # too non-specific, deprecate and remove later.
     def is_role(
-        self,
-        role: Any,
-        *,
-        strict: bool = False
+        self, role: Any, *, strict: bool = False
     ) -> TypeGuard[type[Role] | Role | str]:
         """Check if this role is the given role.
 

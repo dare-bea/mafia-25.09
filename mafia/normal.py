@@ -934,7 +934,10 @@ class Neapolitan(Role):
             *,
             visit: Visit,
         ) -> str:
-            if target.role.is_role(Vanilla, strict=True) and "town" in target.alignment.tags:
+            if (
+                target.role.is_role(Vanilla, strict=True)
+                and "town" in target.alignment.tags
+            ):
                 return f"{target.name} is a Vanilla Townie."
             return f"{target.name} is not a Vanilla Townie."
 
@@ -1386,7 +1389,10 @@ class GoonCop(Role):
             *,
             visit: Visit,
         ) -> str:
-            if target.role.is_role(Vanilla, strict=True) and "mafia" in target.alignment.tags:
+            if (
+                target.role.is_role(Vanilla, strict=True)
+                and "mafia" in target.alignment.tags
+            ):
                 return f"{target.name} is a Mafia Goon!"
             return f"{target.name} is not a Mafia Goon."
 
@@ -2390,9 +2396,6 @@ class Personal(AbilityModifier):
                     factional_visits.append(v)
                     game.visits.remove(v)
 
-            print("Game visits:", game.visits)
-            print("Factional visits:", factional_visits)
-            
             # If the ability raises an exception, we still want to restore the visits,
             # especially if the failure is handled in the caller.
             try:
