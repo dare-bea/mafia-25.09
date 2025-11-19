@@ -1,6 +1,6 @@
 [project]
 name = "mafia"
-version = "0.5.0"
+version = "0.5.1"
 description = "The Mafia party game implemented in Python."
 authors = [
     { name = "dare-bea"}
@@ -41,8 +41,6 @@ extend-select = [
     # Less important rules, but still useful
     "ERA001",  # eradicate: commented-out-code
     "ANN",     # flake8-annotations
-    #"COM812",  # flake8-commas: missing-trailing-comma
-        # It's annoying to have a missing comma when extending a list
     "DTZ",     # flake8-datetimez
     "EM",      # flake8-errmsg
     "INT",     # flake8-gettext
