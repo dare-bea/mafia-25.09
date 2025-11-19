@@ -326,35 +326,6 @@ class Role:
 
     modifiers: frozenset[str] = frozenset()
 
-    # too non-specific, deprecate and remove later.
-    def is_role(  # noqa: PLR0911
-        self,
-        role: Any,
-    ) -> TypeGuard[
-        type[Role | Modifier] | Role | str | Modifier | Callable[..., type[Role]]
-    ]:
-        """Check if this role is the given role."""
-        if isinstance(role, str):
-            return self.id == role or role in self.modifiers
-        if isinstance(role, Role):
-            return self.id == role.id or isinstance(self, type(role))
-        if isinstance(role, type) and issubclass(role, Role):
-            return isinstance(self, role)
-        if isinstance(role, Modifier):
-            return role.id in self.modifiers or any(
-                isinstance(m, type(role)) for m in self.modifiers
-            )
-        if isinstance(role, type) and issubclass(role, Modifier):
-            return any(isinstance(m, role) for m in self.modifiers)
-        if hasattr(role, "id"):
-            return self.id == role.id or role.id in self.modifiers
-        if callable(role):
-            try:
-                return self.is_role(role())
-            except TypeError:
-                pass
-        return False
-
     @classmethod
     def combine(cls, *roles: type[Role]) -> type[Role]:
         """Combine multiple roles into one with the abilities of all of them."""
