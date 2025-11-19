@@ -86,7 +86,7 @@ def roleblock_player(
     """Roleblock a player."""
     success = VisitStatus.FAILURE
     for v in player.get_visits(game):
-        if visit is not None and not Personal.can_interact(visit, v):
+        if visit is not None and not PersonalV1.can_interact(visit, v):
             continue
         if v.ability_type is not AbilityType.PASSIVE and "unstoppable" not in v.tags:
             v.status = VisitStatus.FAILURE
@@ -534,7 +534,7 @@ class Rolestop(Ability):
                 v.is_active(game)
                 and "unstoppable" not in v.tags
                 and self.block_check(actor, target, v, visit=visit)
-                and Personal.can_interact(visit, v)
+                and PersonalV1.can_interact(visit, v)
             ):
                 if self.block_visit(actor, target, v, visit=visit) >= VisitStatus.SUCCESS:
                     successes += 1
@@ -853,7 +853,7 @@ class Juggernaut(Role):
                 if (
                     "factional_kill" in v.tags
                     and v.is_active(game)
-                    and Personal.can_interact(visit, v)
+                    and PersonalV1.can_interact(visit, v)
                     # Personal makes Juggernaut useless
                     # but just in case it's used for some reason.
                 ):
@@ -1059,7 +1059,7 @@ class Tracker(Role):
                 if (
                     visit_is_visible(v, game)
                     and v is not visit
-                    and Personal.can_interact(visit, v)
+                    and PersonalV1.can_interact(visit, v)
                 ):
                     visits.extend(v.targets)
 
@@ -1142,7 +1142,7 @@ class Watcher(Role):
                 if (
                     visit_is_visible(v, game)
                     and v is not visit
-                    and Personal.can_interact(visit, v)
+                    and PersonalV1.can_interact(visit, v)
                 )
             ]
             if visits:
@@ -1343,7 +1343,7 @@ class Detective(Role):
                 "kill" in v.tags
                 for v in target.get_visits(game)
                 if v.ability_type is not AbilityType.PASSIVE
-                and Personal.can_interact(visit, v)
+                and PersonalV1.can_interact(visit, v)
             ):
                 return f"{target.name} has tried to kill someone!"
             return f"{target.name} has not tried to kill anyone."
@@ -1617,14 +1617,14 @@ class MotionDetector(Role):
             visited = any(
                 visit_is_visible(v, game)
                 and v is not visit
-                and Personal.can_interact(visit, v)
+                and PersonalV1.can_interact(visit, v)
                 for v in target.get_visits(game)
             )
             # Check if target was visited by someone.
             was_visited = any(
                 visit_is_visible(v, game)
                 and v is not visit
-                and Personal.can_interact(visit, v)
+                and PersonalV1.can_interact(visit, v)
                 for v in target.get_visitors(game)
             )
             if visited or was_visited:
@@ -1674,7 +1674,7 @@ class Ninja(Role):
                 if (
                     "factional_kill" in v.tags
                     and v.is_active(game)
-                    and Personal.can_interact(visit, v)
+                    and PersonalV1.can_interact(visit, v)
                 ):
                     v.tags |= frozenset({"hidden"})
                     successes += 1
@@ -1765,7 +1765,7 @@ class Reporter(Role):
             if any(
                 visit_is_visible(v, game)
                 and v is not visit
-                and Personal.can_interact(visit, v)
+                and PersonalV1.can_interact(visit, v)
                 for v in target.get_visits(game)
             ):
                 return f"{target.name} targeted someone this night!"
@@ -1823,7 +1823,7 @@ class RoleWatcher(Role):
                 if (
                     visit_is_visible(v, game)
                     and v is not visit
-                    and Personal.can_interact(visit, v)
+                    and PersonalV1.can_interact(visit, v)
                 )
             ]
             if roles:
@@ -1855,7 +1855,7 @@ class Shield(Role):
             if any(
                 "juggernaut" in v.tags
                 for v in target.get_visitors(game)
-                if v.is_active(game) and Personal.can_interact(visit, v)
+                if v.is_active(game) and PersonalV1.can_interact(visit, v)
             ):
                 return VisitStatus.PENDING
             max_blocks: int | None
@@ -2348,13 +2348,16 @@ class Weak(AbilityModifier):
         )
 
 
-class Personal(AbilityModifier):
+class PersonalV1(AbilityModifier):
     """Cannot interact with factional abilities.
 
     Warning: This modifier does not check on its own.
     Make sure can_interact() is used in the ability's perform() method.
+
+    This may be removed in the future.
     """
 
+    id = "Personal (V1)"
     tags = frozenset({"personal"})
 
     @staticmethod
@@ -2362,15 +2365,16 @@ class Personal(AbilityModifier):
         return "personal" not in visit.tags or "factional" not in affected_visit.tags
 
 
-class PersonalV2(AbilityModifier):
+class Personal(AbilityModifier):
     """Cannot interact with factional abilities.
 
-    Unlike Personal, this modifier checks on its own.
+    Unlike `PersonalV1`, this modifier checks on its own.
     It temporarily removes factional abilities from the game, and then adds them back
-    after the ability is performed.
+    after the ability is performed (thus preventing them from being interacted with).
+
+    This will move factional abilities to the end of `game.visits`.
     """
 
-    id = Personal.id
     tags = frozenset({"personal"})
 
     def modify_ability(self, ability: type[Ability]) -> type[Ability]:
@@ -2382,15 +2386,19 @@ class PersonalV2(AbilityModifier):
             *,
             visit: Visit,
         ) -> int:
-            og_visits = game.visits
-            game.visits = [v for v in game.visits if "factional" not in v.tags]
+            factional_visits = []
+            for v in game.visits.copy():
+                if v.is_active(game) and "factional" in v.tags:
+                    factional_visits.append(v)
+                    game.visits.remove(v)
 
             # If the ability raises an exception, we still want to restore the visits,
             # especially if the failure is handled in the caller.
             try:
                 result = ability.perform(method_self, game, actor, targets, visit=visit)
             finally:
-                game.visits = og_visits
+                for v in factional_visits:
+                    game.visits.append(v)
             return result
 
         return type(
