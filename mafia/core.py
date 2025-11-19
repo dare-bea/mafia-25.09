@@ -215,7 +215,7 @@ class Visit:
         targets = ", ".join(t.name for t in self.targets)
         return (
             f"Visit({self.actor.name}, [{targets}], {self.ability!r}, "
-            "{self.ability_type!r}, {self.status!r}, {self.tags!r})"
+            f"{self.ability_type!r}, {self.status!r}, {self.tags!r})"
         )
 
     actor: Player
@@ -326,6 +326,37 @@ class Role:
 
     modifiers: frozenset[str] = frozenset()
 
+    # too non-specific, deprecate and remove later.
+    def is_role(
+        self,
+        role: Any,
+        *,
+        strict: bool = False
+    ) -> TypeGuard[type[Role] | Role | str]:
+        """Check if this role is the given role.
+
+        ## Strict Mode
+
+        ## Non-Strict Mode
+        Will return True if:
+        * `role` is a string and matches the role's ID.
+        * `role` is a Role instance and matches the role's ID and type.
+        * `role` is a Role type and matches the role's type.
+        """
+        if isinstance(role, str):
+            return self.id == role
+        if strict:
+            if isinstance(role, Role):
+                return self.id == role.id and type(self) is type(role)
+            if isinstance(role, type) and issubclass(role, Role):
+                return self.id == role.id and type(self) is role
+        else:
+            if isinstance(role, Role):
+                return self.id == role.id and isinstance(self, type(role))
+            if isinstance(role, type) and issubclass(role, Role):
+                return isinstance(self, role)
+        return False
+
     @classmethod
     def combine(cls, *roles: type[Role]) -> type[Role]:
         """Combine multiple roles into one with the abilities of all of them."""
@@ -348,9 +379,7 @@ class Role:
             def is_role(
                 self,
                 role: Any,
-            ) -> TypeGuard[
-                type[Role | Modifier] | Role | str | Modifier | Callable[..., type[Role]]
-            ]:
+            ) -> TypeGuard[type[Role] | Role | str]:
                 return any(r.is_role(role) for r in self.roles) or super().is_role(role)
 
         return CombinedRole
